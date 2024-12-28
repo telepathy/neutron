@@ -1,15 +1,11 @@
 package main
 
 import (
-	"crypto/tls"
-	"fmt"
 	"log"
-	"net/http"
-	"net/url"
 	"neutron/internal/model"
 	"neutron/internal/service"
 	"os"
-	"path"
+	"strings"
 )
 
 type RunnerConfig struct {
@@ -18,56 +14,32 @@ type RunnerConfig struct {
 	ProjectId   string
 	CommitSha   string
 	JobName     string
+	GitRepoUrl  string
+	GitUsername string
+	GitPassword string
 	Trigger     model.TriggerType
 }
 
 func main() {
 	runnerConfig := getConfig()
 	reporter := NewGitlabReporter(runnerConfig)
-	err := downloadProject(runnerConfig, "/pipeline")
+	err := downloadProject(runnerConfig, "/repo")
 	if err != nil {
 		log.Fatal(err)
-	}
-	entries, err := os.ReadDir("/pipeline")
-	if err != nil {
-		log.Fatal(err)
-	}
-	var workingDir string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			if workingDir != "" {
-				log.Fatal("Multi workdir.")
-			}
-			workingDir = entry.Name()
-		}
-	}
-	if workingDir == "" {
-		log.Fatal("No working directory.")
 	}
 
-	runner := service.NewRunner(path.Join("/pipeline", workingDir), runnerConfig.Trigger, runnerConfig.JobName, reporter)
+	runner := service.NewRunner("/repo", runnerConfig.Trigger, runnerConfig.JobName, reporter)
 	runner.Run()
 }
 
 func downloadProject(c RunnerConfig, destDir string) error {
-	httpClient := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
+	var err error
+	if strings.Contains(c.CommitSha, "refs/") {
+		err = service.CheckoutRef(c.GitRepoUrl, c.CommitSha, c.GitUsername, c.GitPassword, destDir)
+	} else {
+		err = service.CheckoutSha(c.GitRepoUrl, c.CommitSha, c.GitUsername, c.GitPassword, destDir)
 	}
-	baseUrl := fmt.Sprintf("%s/api/v4/projects/%s/repository/archive", c.GitlabUrl, c.ProjectId)
-	u, _ := url.Parse(baseUrl)
-	params := url.Values{}
-	params.Add("sha", c.CommitSha)
-	u.RawQuery = params.Encode()
-	req, _ := http.NewRequest("GET", u.String(), nil)
-	req.Header.Add("PRIVATE-TOKEN", c.GitlabToken)
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer resp.Body.Close()
-	return service.Extract(resp.Body, destDir)
+	return err
 }
 
 func getConfig() RunnerConfig {
@@ -95,6 +67,18 @@ func getConfig() RunnerConfig {
 	if jobName == "" {
 		log.Fatalln("JOB_NAME is not set. Pipeline exit now.")
 	}
+	gitUsername := os.Getenv("GIT_USERNAME")
+	if gitUsername == "" {
+		log.Fatalln("GIT_USERNAME is not set. Pipeline exit now.")
+	}
+	gitPassword := os.Getenv("GIT_PASSWORD")
+	if gitPassword == "" {
+		log.Fatalln("GIT_PASSWORD is not set. Pipeline exit now.")
+	}
+	gitRepoUrl := os.Getenv("GIT_REPO_URL")
+	if gitRepoUrl == "" {
+		log.Fatalln("GIT_REPO_URL is not set. Pipeline exit now.")
+	}
 	return RunnerConfig{
 		GitlabToken: gitlabToken,
 		GitlabUrl:   gitlabUrl,
@@ -102,5 +86,8 @@ func getConfig() RunnerConfig {
 		CommitSha:   commitSha,
 		JobName:     jobName,
 		Trigger:     trigger,
+		GitUsername: gitUsername,
+		GitPassword: gitPassword,
+		GitRepoUrl:  gitRepoUrl,
 	}
 }

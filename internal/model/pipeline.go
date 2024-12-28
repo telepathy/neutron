@@ -27,3 +27,7 @@ const (
 type Reporter interface {
 	Report(jobName string, stepName string, status StepResult, description string)
 }
+
+type PipelineParser interface {
+	Parse() (Pipeline, error)
+}

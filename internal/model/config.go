@@ -1,7 +1,14 @@
 package model
 
 type Config struct {
-	Database string `json:"database"`
+	Database   string              `yaml:"database"`
+	Salt       string              `yaml:"salt"`
+	BaseConfig map[string]CodeBase `yaml:"codebase"`
+}
+
+type CodeBase struct {
+	Url   string `yaml:"url"`
+	Token string `json:"token"`
 }
 
 type TriggerType string

@@ -2,3 +2,4 @@
 bin/
 *.http
 vendor/
+config.yaml
