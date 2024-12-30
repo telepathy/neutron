@@ -1,5 +1,9 @@
 package model
 
+import (
+	batchv1 "k8s.io/api/batch/v1"
+)
+
 type Pipeline struct {
 	Jobs map[string]Job `yaml:"jobs"`
 }
@@ -30,4 +34,8 @@ type Reporter interface {
 
 type PipelineParser interface {
 	Parse() (Pipeline, error)
+}
+
+type JobCreator interface {
+	CreateJob(jobName string) *batchv1.Job
 }

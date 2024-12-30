@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"neutron/internal/gitlab"
 	"neutron/internal/model"
 )
 
@@ -19,11 +20,11 @@ type message struct {
 
 type GitlabReporter struct {
 	client  *http.Client
-	gitBase RunnerConfig
+	gitBase gitlab.RunnerConfig
 	url     string
 }
 
-func NewGitlabReporter(c RunnerConfig) *GitlabReporter {
+func NewGitlabReporter(c gitlab.RunnerConfig) *GitlabReporter {
 	return &GitlabReporter{
 		gitBase: c,
 		client:  &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}},
@@ -53,8 +54,10 @@ func (r *GitlabReporter) Report(jobName string, stepName string, status model.St
 	req, _ := http.NewRequest("POST", r.url, bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("PRIVATE-TOKEN", r.gitBase.GitlabToken)
-	_, err := r.client.Do(req)
+	resp, err := r.client.Do(req)
 	if err != nil {
 		log.Fatalf("Error sending pipeline status to gitlab: %v", err)
+	} else {
+		log.Printf("Pipeline status reported to gitlab: %s", resp.Status)
 	}
 }

@@ -2,23 +2,12 @@ package main
 
 import (
 	"log"
+	"neutron/internal/gitlab"
 	"neutron/internal/model"
 	"neutron/internal/service"
 	"os"
 	"strings"
 )
-
-type RunnerConfig struct {
-	GitlabToken string
-	GitlabUrl   string
-	ProjectId   string
-	CommitSha   string
-	JobName     string
-	GitRepoUrl  string
-	GitUsername string
-	GitPassword string
-	Trigger     model.TriggerType
-}
 
 func main() {
 	runnerConfig := getConfig()
@@ -32,17 +21,17 @@ func main() {
 	runner.Run()
 }
 
-func downloadProject(c RunnerConfig, destDir string) error {
+func downloadProject(c gitlab.RunnerConfig, destDir string) error {
 	var err error
 	if strings.Contains(c.CommitSha, "refs/") {
-		err = service.CheckoutRef(c.GitRepoUrl, c.CommitSha, c.GitUsername, c.GitPassword, destDir)
+		err = service.CheckoutRef(c.GitRepoUrl, c.CommitSha, c.GitPrivateKey, destDir)
 	} else {
-		err = service.CheckoutSha(c.GitRepoUrl, c.CommitSha, c.GitUsername, c.GitPassword, destDir)
+		err = service.CheckoutSha(c.GitRepoUrl, c.CommitSha, c.GitPrivateKey, destDir)
 	}
 	return err
 }
 
-func getConfig() RunnerConfig {
+func getConfig() gitlab.RunnerConfig {
 	gitlabUrl := os.Getenv("GITLAB_URL")
 	if gitlabUrl == "" {
 		log.Fatalln("GITLAB_URL is not set. Pipeline exit now.")
@@ -67,27 +56,22 @@ func getConfig() RunnerConfig {
 	if jobName == "" {
 		log.Fatalln("JOB_NAME is not set. Pipeline exit now.")
 	}
-	gitUsername := os.Getenv("GIT_USERNAME")
-	if gitUsername == "" {
-		log.Fatalln("GIT_USERNAME is not set. Pipeline exit now.")
-	}
-	gitPassword := os.Getenv("GIT_PASSWORD")
-	if gitPassword == "" {
-		log.Fatalln("GIT_PASSWORD is not set. Pipeline exit now.")
+	gitPrivateKey := os.Getenv("GIT_PRIVATE_KEY")
+	if gitPrivateKey == "" {
+		log.Fatalln("GIT_PRIVATE_KEY is not set. Pipeline exit now.")
 	}
 	gitRepoUrl := os.Getenv("GIT_REPO_URL")
 	if gitRepoUrl == "" {
 		log.Fatalln("GIT_REPO_URL is not set. Pipeline exit now.")
 	}
-	return RunnerConfig{
-		GitlabToken: gitlabToken,
-		GitlabUrl:   gitlabUrl,
-		ProjectId:   projectId,
-		CommitSha:   commitSha,
-		JobName:     jobName,
-		Trigger:     trigger,
-		GitUsername: gitUsername,
-		GitPassword: gitPassword,
-		GitRepoUrl:  gitRepoUrl,
+	return gitlab.RunnerConfig{
+		GitlabToken:   gitlabToken,
+		GitlabUrl:     gitlabUrl,
+		ProjectId:     projectId,
+		CommitSha:     commitSha,
+		JobName:       jobName,
+		Trigger:       trigger,
+		GitPrivateKey: gitPrivateKey,
+		GitRepoUrl:    gitRepoUrl,
 	}
 }

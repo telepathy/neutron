@@ -1,6 +1,7 @@
 package model
 
 type Config struct {
+	Port       int                 `yaml:"port"`
 	Database   string              `yaml:"database"`
 	Salt       string              `yaml:"salt"`
 	BaseConfig map[string]CodeBase `yaml:"codebase"`

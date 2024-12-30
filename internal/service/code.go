@@ -5,17 +5,20 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/transport/http"
+	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
+	agentssh "golang.org/x/crypto/ssh"
 	"os"
 )
 
-func CheckoutSha(gitSource string, commitSha string, user string, password string, destDir string) error {
+func CheckoutSha(gitSource string, commitSha string, privateKey string, destDir string) error {
+	pk, err := gitssh.NewPublicKeysFromFile("git", privateKey, "")
+	if err != nil {
+		return err
+	}
+	pk.HostKeyCallback = agentssh.InsecureIgnoreHostKey()
 	repo, err := git.PlainClone(destDir, false, &git.CloneOptions{
-		URL: gitSource,
-		Auth: &http.BasicAuth{
-			Username: user,
-			Password: password,
-		},
+		URL:  gitSource,
+		Auth: pk,
 	})
 	if err != nil {
 		return err
@@ -33,18 +36,21 @@ func CheckoutSha(gitSource string, commitSha string, user string, password strin
 
 	err = w.Pull(&git.PullOptions{
 		RemoteName: "origin",
+		Auth:       pk,
 	})
 
 	return err
 }
 
-func CheckoutRef(gitSource string, ref string, user string, password string, destDir string) error {
+func CheckoutRef(gitSource string, ref string, privateKey string, destDir string) error {
+	pk, err := gitssh.NewPublicKeysFromFile("git", privateKey, "")
+	if err != nil {
+		return err
+	}
+	pk.HostKeyCallback = agentssh.InsecureIgnoreHostKey()
 	repo, err := git.PlainClone(destDir, false, &git.CloneOptions{
-		URL: gitSource,
-		Auth: &http.BasicAuth{
-			Username: user,
-			Password: password,
-		},
+		URL:  gitSource,
+		Auth: pk,
 	})
 	if err != nil {
 		return err
@@ -55,7 +61,7 @@ func CheckoutRef(gitSource string, ref string, user string, password string, des
 		},
 		Progress: os.Stdout,
 		Force:    true,
-		Auth:     &http.BasicAuth{Username: user, Password: password},
+		Auth:     pk,
 	})
 	if err != nil {
 		return err
