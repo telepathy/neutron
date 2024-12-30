@@ -3,3 +3,5 @@ bin/
 *.http
 vendor/
 config.yaml
+cmd/api/files/
+test.yaml

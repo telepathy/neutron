@@ -1,4 +1,4 @@
-package parser
+package gitlab
 
 import (
 	"encoding/base64"
@@ -31,26 +31,26 @@ type FileResponse struct {
 	Content string `json:"content"`
 }
 
-type GitLabParser struct {
+type Parser struct {
 	accessApiPath string
 	accessToken   string
 	Request       WebhookRequest
 }
 
-func NewGitLabParser(requestBody io.ReadCloser, gitlabHost string, token string) *GitLabParser {
+func NewGitLabParser(requestBody io.ReadCloser, gitlabHost string, token string) *Parser {
 	var request WebhookRequest
 	body, _ := io.ReadAll(requestBody)
 	defer requestBody.Close()
 	_ = json.Unmarshal(body, &request)
 
-	return &GitLabParser{
+	return &Parser{
 		accessApiPath: fmt.Sprintf("%s/api/v4/projects/%d/repository/files/neutron.yaml", gitlabHost, request.Project.Id),
 		accessToken:   token,
 		Request:       request,
 	}
 }
 
-func (g *GitLabParser) Parse() (model.Pipeline, error) {
+func (g *Parser) Parse() (model.Pipeline, error) {
 	var ref string
 	switch g.Request.WebhookType {
 	case "merge_request":
