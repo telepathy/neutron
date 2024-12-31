@@ -28,7 +28,7 @@ func NewGitlabReporter(c gitlab.RunnerConfig) *GitlabReporter {
 	return &GitlabReporter{
 		gitBase: c,
 		client:  &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}},
-		url:     fmt.Sprintf("%s/api/v4/projects/%s/statuses/%s", c.GitlabUrl, c.ProjectId, c.CommitSha),
+		url:     fmt.Sprintf("%s/api/v4/projects/%s/statuses/%s", c.GitlabUrl, c.ProjectId, c.ReportSha),
 	}
 }
 

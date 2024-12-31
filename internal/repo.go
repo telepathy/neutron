@@ -12,8 +12,6 @@ type WebhookConfig struct {
 	ProjectUrl  string
 	WebhookType string
 	RepoUrl     string
-	GitUser     string
-	GitPassword string
 }
 
 type Repository struct {
@@ -38,14 +36,14 @@ func (r *Repository) Close() {
 }
 
 func (r *Repository) GetWebhookConfig(id string) WebhookConfig {
-	row, err := r.db.Query("SELECT webhook_type,project_url,repo_url,git_user,git_password FROM project WHERE id=?", id)
+	row, err := r.db.Query("SELECT webhook_type,project_url,repo_url FROM project WHERE id=?", id)
 	defer row.Close()
 	var webhookConfig WebhookConfig
 	if err != nil {
 		return webhookConfig
 	}
 	for row.Next() {
-		err = row.Scan(&webhookConfig.WebhookType, &webhookConfig.ProjectUrl, &webhookConfig.RepoUrl, &webhookConfig.GitUser, &webhookConfig.GitPassword)
+		err = row.Scan(&webhookConfig.WebhookType, &webhookConfig.ProjectUrl, &webhookConfig.RepoUrl)
 		break
 	}
 	return webhookConfig

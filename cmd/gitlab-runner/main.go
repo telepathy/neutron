@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"neutron/internal/gitlab"
-	"neutron/internal/model"
 	"neutron/internal/service"
 	"os"
 	"strings"
@@ -48,9 +47,13 @@ func getConfig() gitlab.RunnerConfig {
 	if commitSha == "" {
 		log.Fatalln("GITLAB_COMMIT_SHA is not set. Pipeline exit now.")
 	}
-	trigger := model.TriggerType(os.Getenv("TRIGGER"))
+	reportSha := os.Getenv("GITLAB_REPORT_SHA")
+	if reportSha == "" {
+		log.Fatalln("GITLAB_REPORT_SHA is not set. Pipeline exit now.")
+	}
+	trigger := os.Getenv("TRIGGER")
 	if trigger == "" {
-		log.Fatalln("GITLAB_TRIGGER is not set. Pipeline exit now.")
+		log.Fatalln("TRIGGER is not set. Pipeline exit now.")
 	}
 	jobName := os.Getenv("JOB_NAME")
 	if jobName == "" {
@@ -69,6 +72,7 @@ func getConfig() gitlab.RunnerConfig {
 		GitlabUrl:     gitlabUrl,
 		ProjectId:     projectId,
 		CommitSha:     commitSha,
+		ReportSha:     reportSha,
 		JobName:       jobName,
 		Trigger:       trigger,
 		GitPrivateKey: gitPrivateKey,
