@@ -1,19 +1,24 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"gopkg.in/yaml.v3"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 	"net/http"
 	"neutron/internal"
 	"neutron/internal/gitlab"
 	"neutron/internal/model"
 	"os"
+	"strconv"
 )
 
 //go:embed files/*
-var embeddedFiles embed.FS
+var runnerBins embed.FS
 
 func main() {
 	var config model.Config
@@ -27,27 +32,67 @@ func main() {
 		webhookConfig := repo.GetWebhookConfig(id)
 		var pipeline model.Pipeline
 		var err error
+		var jobs []string
 		switch webhookConfig.WebhookType {
 		case "GitLab":
 			p := gitlab.NewGitLabParser(c.Request.Body, config.BaseConfig["GitLab"].Url, config.BaseConfig["GitLab"].Token)
 			pipeline, err = p.Parse()
+			kubeConfig, err := clientcmd.BuildConfigFromFlags("", config.Kubernetes.KubeConfig)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			clientSet, err := kubernetes.NewForConfig(kubeConfig)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			for jobName, job := range pipeline.Jobs {
+				runnerConfig := gitlab.RunnerConfig{
+					GitlabToken:   config.BaseConfig["GitLab"].Token,
+					GitlabUrl:     config.BaseConfig["GitLab"].Url,
+					ProjectId:     strconv.Itoa(p.Request.Project.Id),
+					CommitSha:     p.CodeSha,
+					ReportSha:     p.ReportSha,
+					JobName:       jobName,
+					Trigger:       p.Trigger,
+					GitRepoUrl:    webhookConfig.RepoUrl,
+					GitPrivateKey: "/etc/ssh/id_rsa",
+				}
+				l := gitlab.NewGitLabLauncher(
+					config.Kubernetes.KubeConfig,
+					config.Kubernetes.Namespace,
+					runnerConfig,
+					config.Kubernetes.InitImage,
+					job.Image,
+					config.Kubernetes.GitPrivateKey,
+				)
+				jobClient := clientSet.BatchV1().Jobs(config.Kubernetes.Namespace)
+				neutronHost := fmt.Sprintf("%s:%d", config.Host, config.Port)
+				createdJob, err := jobClient.Create(context.Background(), l.CreateJob(neutronHost), metav1.CreateOptions{})
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+					return
+				}
+				jobs = append(jobs, createdJob.Name)
+			}
 		}
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "pipeline": pipeline})
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "pipeline": pipeline, "jobs": jobs})
 	})
 
 	r.GET("/runner-bin/:type", func(c *gin.Context) {
 		runnerBinFile := fmt.Sprintf("files/neutron-%s-runner", c.Param("type"))
-		file, err := embeddedFiles.Open(runnerBinFile)
+		file, err := runnerBins.Open(runnerBinFile)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		}
 		defer file.Close()
 
-		fileContent, err := embeddedFiles.ReadFile(runnerBinFile)
+		fileContent, err := runnerBins.ReadFile(runnerBinFile)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		}

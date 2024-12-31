@@ -14,12 +14,12 @@ import (
 type Runner struct {
 	WorkingDir string
 	JobName    string
-	Trigger    model.TriggerType
+	Trigger    string
 	Steps      []model.Step
 	Reporter   model.Reporter
 }
 
-func NewRunner(workingDir string, triggerType model.TriggerType, jobName string, reporter model.Reporter) *Runner {
+func NewRunner(workingDir string, triggerType string, jobName string, reporter model.Reporter) *Runner {
 	data, err := os.ReadFile(path.Join(workingDir, "neutron.yaml"))
 	if err != nil {
 		log.Fatalf(err.Error())

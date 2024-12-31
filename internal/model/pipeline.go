@@ -9,9 +9,9 @@ type Pipeline struct {
 }
 
 type Job struct {
-	Image   string        `yaml:"image"`
-	Trigger []TriggerType `yaml:"trigger"`
-	Steps   []Step        `yaml:"steps"`
+	Image   string   `yaml:"image"`
+	Trigger []string `yaml:"trigger"`
+	Steps   []Step   `yaml:"steps"`
 }
 
 type Step struct {
