@@ -5,7 +5,9 @@ import (
 	"embed"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"gopkg.in/yaml.v3"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -15,6 +17,7 @@ import (
 	"neutron/internal/model"
 	"os"
 	"strconv"
+	"time"
 )
 
 //go:embed files/*
@@ -25,8 +28,18 @@ func main() {
 	data, _ := os.ReadFile("./config.yaml")
 	_ = yaml.Unmarshal(data, &config)
 	repo := internal.NewRepository(config)
+
+	kubeConfig, err := clientcmd.BuildConfigFromFlags("", config.Kubernetes.KubeConfig)
+	if err != nil {
+		panic(err)
+	}
+	clientSet, err := kubernetes.NewForConfig(kubeConfig)
+	if err != nil {
+		panic(err)
+	}
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
+
 	r.POST("/webhook/:id", func(c *gin.Context) {
 		id := c.Param("id")
 		webhookConfig := repo.GetWebhookConfig(id)
@@ -37,16 +50,6 @@ func main() {
 		case "GitLab":
 			p := gitlab.NewGitLabParser(c.Request.Body, config.BaseConfig["GitLab"].Url, config.BaseConfig["GitLab"].Token)
 			pipeline, err = p.Parse()
-			kubeConfig, err := clientcmd.BuildConfigFromFlags("", config.Kubernetes.KubeConfig)
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-			clientSet, err := kubernetes.NewForConfig(kubeConfig)
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
 			for jobName, job := range pipeline.Jobs {
 				runnerConfig := gitlab.RunnerConfig{
 					GitlabToken:   config.BaseConfig["GitLab"].Token,
@@ -98,6 +101,34 @@ func main() {
 		}
 		c.Header("Content-Disposition", "attachment; filename=\"runner\"")
 		c.Data(http.StatusOK, "application/octet-stream", fileContent)
+	})
+
+	r.GET("/ws/logs/:podName", func(c *gin.Context) {
+		podName := c.Param("podName")
+		u := websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool { return true },
+		}
+		conn, err := u.Upgrade(c.Writer, c.Request, nil)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		}
+		defer conn.Close()
+		logStream, err := clientSet.CoreV1().Pods(config.Kubernetes.Namespace).GetLogs(podName, &corev1.PodLogOptions{Follow: true}).Stream(context.TODO())
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		}
+		defer logStream.Close()
+		buffer := make([]byte, 1024)
+		for {
+			n, err := logStream.Read(buffer)
+			if err != nil {
+				break
+			}
+			if err := conn.WriteMessage(websocket.TextMessage, buffer[:n]); err != nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
 	})
 
 	_ = r.Run(fmt.Sprintf(":%d", config.Port))
