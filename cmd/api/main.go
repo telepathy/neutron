@@ -74,6 +74,9 @@ func main() {
 			p := gitlab.NewGitLabParser(c.Request.Body, config.BaseConfig["GitLab"].Url, config.BaseConfig["GitLab"].Token)
 			pipeline, err = p.Parse()
 			for jobName, job := range pipeline.Jobs {
+				if !isValidTrigger(p.Trigger, job.Trigger) {
+					continue
+				}
 				runnerConfig := gitlab.RunnerConfig{
 					GitlabToken:   config.BaseConfig["GitLab"].Token,
 					GitlabUrl:     config.BaseConfig["GitLab"].Url,
@@ -175,4 +178,13 @@ func main() {
 	})
 
 	_ = r.Run(fmt.Sprintf(":%d", config.Port))
+}
+
+func isValidTrigger(currentTrigger string, validTriggers []string) bool {
+	for _, trigger := range validTriggers {
+		if trigger == currentTrigger {
+			return true
+		}
+	}
+	return false
 }
