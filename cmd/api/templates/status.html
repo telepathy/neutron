@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>neutron - a lightweight pipeline system based on kubernetes</title>
+    <link rel="stylesheet" href="/s/static/milligram.min.css">
+</head>
+<body>
+<div class="container">
+    <div class="row">
+        <div class="column"><h3>Neutron Job - <b>{{.job.ObjectMeta.Name}}</b></h3></div>
+    </div>
+    <div class="row">
+        <div class="column">A {{.job.ObjectMeta.Annotations.sourceType}}'s {{.job.ObjectMeta.Annotations.triggerType}} pipeline.</div>
+    </div>
+    <div class="row">
+        <div class="column"><a target="_blank" href="{{.job.ObjectMeta.Annotations.sourceLink}}">{{.job.ObjectMeta.Annotations.gitPath}}</a></div>
+    </div>
+    <div class="row">
+        <div class="column column-20">Active Pods: <b>{{.job.Status.Active}}</b></div>
+        <div class="column column-20">Succeeded Pods: <b>{{.job.Status.Succeeded}}</b></div>
+        <div class="column column-20">Failed Pods: <b>{{.job.Status.Failed}}</b></div>
+    </div>
+    <div class="row">
+        <div class="column">
+            <table>
+                <thead><th>Pod</th><th>Status</th></thead>
+                <tbody>
+                {{ range .pods.Items }}
+                <tr><td><a target="_blank" href="/log/{{.ObjectMeta.Name}}">{{.ObjectMeta.Name}}</a></td><td>{{.Status.Phase}}</td></tr>
+                {{ end }}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+</body>
+</html>

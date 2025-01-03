@@ -19,22 +19,24 @@ type message struct {
 }
 
 type GitlabReporter struct {
-	client  *http.Client
-	gitBase gitlab.RunnerConfig
-	url     string
+	client    *http.Client
+	gitBase   gitlab.RunnerConfig
+	url       string
+	targetUrl string
 }
 
 func NewGitlabReporter(c gitlab.RunnerConfig) *GitlabReporter {
 	return &GitlabReporter{
-		gitBase: c,
-		client:  &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}},
-		url:     fmt.Sprintf("%s/api/v4/projects/%s/statuses/%s", c.GitlabUrl, c.ProjectId, c.ReportSha),
+		gitBase:   c,
+		client:    &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}},
+		url:       fmt.Sprintf("%s/api/v4/projects/%s/statuses/%s", c.GitlabUrl, c.ProjectId, c.ReportSha),
+		targetUrl: c.PipelineUrl,
 	}
 }
 
 func (r *GitlabReporter) Report(jobName string, stepName string, status model.StepResult, description string) {
 	m := message{
-		TargetUrl:   "http://localhost",
+		TargetUrl:   r.targetUrl,
 		Description: description,
 		Context:     fmt.Sprintf("%s/%s", jobName, stepName),
 	}

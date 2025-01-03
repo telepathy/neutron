@@ -1,6 +1,7 @@
 package gitlab
 
 import (
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -82,6 +83,11 @@ func NewGitLabParser(requestBody io.ReadCloser, gitlabHost string, token string)
 }
 
 func (g *Parser) Parse() (model.Pipeline, error) {
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
 	req, err := http.NewRequest("GET", g.accessApiPath, nil)
 	if err != nil {
 		return model.Pipeline{}, err
@@ -95,7 +101,7 @@ func (g *Parser) Parse() (model.Pipeline, error) {
 	query.Add("ref", yamlRef)
 	req.URL.RawQuery = query.Encode()
 	req.Header.Add("PRIVATE-TOKEN", g.accessToken)
-	res, err := http.DefaultClient.Do(req)
+	res, err := client.Do(req)
 	if err != nil {
 		return model.Pipeline{}, err
 	}

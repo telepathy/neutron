@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"gopkg.in/yaml.v3"
+	"html/template"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -21,7 +22,13 @@ import (
 )
 
 //go:embed files/*
-var runnerBins embed.FS
+var runnerBinFs embed.FS
+
+//go:embed static/*
+var staticFs embed.FS
+
+//go:embed templates/*
+var htmlFs embed.FS
 
 func main() {
 	var config model.Config
@@ -37,8 +44,24 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
+	r.StaticFS("/s", http.FS(staticFs))
+	tmpl := template.Must(template.ParseFS(htmlFs, "templates/*"))
+	r.SetHTMLTemplate(tmpl)
+
+	r.GET("/", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "index.html", gin.H{
+			"Message": "Hello!",
+		})
+	})
+
+	r.GET("/log/:podName", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "log.html", gin.H{
+			"PodName": c.Param("podName"),
+		})
+	})
 
 	r.POST("/webhook/:id", func(c *gin.Context) {
 		id := c.Param("id")
@@ -89,18 +112,38 @@ func main() {
 
 	r.GET("/runner-bin/:type", func(c *gin.Context) {
 		runnerBinFile := fmt.Sprintf("files/neutron-%s-runner", c.Param("type"))
-		file, err := runnerBins.Open(runnerBinFile)
+		file, err := runnerBinFs.Open(runnerBinFile)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		}
 		defer file.Close()
 
-		fileContent, err := runnerBins.ReadFile(runnerBinFile)
+		fileContent, err := runnerBinFs.ReadFile(runnerBinFile)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		}
 		c.Header("Content-Disposition", "attachment; filename=\"runner\"")
 		c.Data(http.StatusOK, "application/octet-stream", fileContent)
+	})
+
+	r.GET("/status/:jobName", func(c *gin.Context) {
+		jobName := c.Param("jobName")
+		jobClient := clientSet.BatchV1().Jobs(config.Kubernetes.Namespace)
+		job, err := jobClient.Get(context.Background(), jobName, metav1.GetOptions{})
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		}
+		podClient := clientSet.CoreV1().Pods(config.Kubernetes.Namespace)
+		selector, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+			MatchLabels: job.Spec.Selector.MatchLabels,
+		})
+		pods, err := podClient.List(context.Background(), metav1.ListOptions{
+			LabelSelector: selector.String(),
+		})
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		}
+		c.HTML(http.StatusOK, "status.html", gin.H{"job": job, "pods": pods})
 	})
 
 	r.GET("/ws/logs/:podName", func(c *gin.Context) {
