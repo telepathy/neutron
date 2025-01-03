@@ -67,6 +67,10 @@ func getConfig() gitlab.RunnerConfig {
 	if gitRepoUrl == "" {
 		log.Fatalln("GIT_REPO_URL is not set. Pipeline exit now.")
 	}
+	pipelineUrl := os.Getenv("PIPELINE_URL")
+	if pipelineUrl == "" {
+		log.Fatalln("PIPELINE_URL is not set. Pipeline exit now.")
+	}
 	return gitlab.RunnerConfig{
 		GitlabToken:   gitlabToken,
 		GitlabUrl:     gitlabUrl,
@@ -77,5 +81,6 @@ func getConfig() gitlab.RunnerConfig {
 		Trigger:       trigger,
 		GitPrivateKey: gitPrivateKey,
 		GitRepoUrl:    gitRepoUrl,
+		PipelineUrl:   pipelineUrl,
 	}
 }

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>neutron - a lightweight pipeline system based on kubernetes</title>
+    <link rel="stylesheet" href="/s/static/milligram.min.css">
+</head>
+<body>
+<div class="container">
+    <div class="row">
+        <div class="column">pod name: {{.PodName}}</div>
+    </div>
+    <div class="row">
+        <div class="column" id="log-content">
+            <pre id="logs" style="overflow-y: auto; max-height: 500px;"></pre>
+        </div>
+    </div>
+</div>
+<script>
+    const logContent = document.getElementById("log-content");
+    const logDiv = document.getElementById("logs");
+    const socket = new WebSocket(`ws://${window.location.host}/ws/logs/{{.PodName}}`)
+    socket.onmessage = function (event) {
+        const logLine = document.getElementById("logs")
+        logLine.textContent = logLine.textContent + event.data
+        logDiv.scrollTop=logDiv.scrollHeight
+    };
+    socket.onerror = function (event) {
+        const errorMsg = document.createElement("div");
+        errorMsg.textContent = "Cannot get log from pod {{.PodName}}: " + event;
+    };
+    socket.onclose = function () {
+        const closedMsg = document.createElement("div");
+        closedMsg.textContent = "No more logs from pod {{.PodName}}.";
+        logContent.append(closedMsg);
+    };
+</script>
+</body>
+</html>
