@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>neutron - a lightweight pipeline system based on kubernetes</title>
+    <link rel="stylesheet" href="/static/milligram.min.css">
+</head>
+<body>
+<div class="container">
+    <div class="row">
+        <div class="column">Register new pipeline</div>
+    </div>
+    <div class="row">
+        <div class="column">
+            <form action="/register-action" method="POST">
+                <fieldset>
+                    <label for="webhookType">Type</label>
+                    <select id="webhookType">
+                        <option value="GitLab">GitLab</option>
+                    </select>
+                    <label for="repoUrl">Repo Url(support ssh protocol only)</label>
+                    <input type="text" id="repoUrl">
+                </fieldset>
+            </form>
+        </div>
+    </div>
+</div>
+</body>
+</html>

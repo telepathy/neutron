@@ -12,5 +12,6 @@ api:
 gitlab:
 	CGO_ENABLED=0 go build -o $(BUILD_DIR)/neutron-gitlab-runner cmd/gitlab-runner/*.go
 	chmod a+x $(BUILD_DIR)/neutron-gitlab-runner
+	cp $(BUILD_DIR)/neutron-gitlab-runner cmd/api/files
 clean:
 	rm -rf $(BUILD_DIR)/*

@@ -8,6 +8,7 @@ import (
 	"github.com/gorilla/websocket"
 	"gopkg.in/yaml.v3"
 	"html/template"
+	"io/fs"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -47,7 +48,8 @@ func main() {
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
-	r.StaticFS("/s", http.FS(staticFs))
+	staticFs, err := fs.Sub(staticFs, "static")
+	r.StaticFS("/static", http.FS(staticFs))
 	tmpl := template.Must(template.ParseFS(htmlFs, "templates/*"))
 	r.SetHTMLTemplate(tmpl)
 
