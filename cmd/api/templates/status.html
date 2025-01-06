@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>neutron - a lightweight pipeline system based on kubernetes</title>
-    <link rel="stylesheet" href="/s/static/milligram.min.css">
+    <link rel="stylesheet" href="/static/milligram.min.css">
 </head>
 <body>
 <div class="container">
@@ -25,7 +25,7 @@
     <div class="row">
         <div class="column">
             <table>
-                <thead><th>Pod</th><th>Status</th></thead>
+                <thead><tr><th>Pod</th><th>Status</th></tr></thead>
                 <tbody>
                 {{ range .pods.Items }}
                 <tr><td><a target="_blank" href="/log/{{.ObjectMeta.Name}}">{{.ObjectMeta.Name}}</a></td><td>{{.Status.Phase}}</td></tr>
