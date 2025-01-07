@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
@@ -38,8 +39,11 @@ func CheckoutSha(gitSource string, commitSha string, privateKey string, destDir 
 		RemoteName: "origin",
 		Auth:       pk,
 	})
-
-	return err
+	if errors.Is(err, git.NoErrAlreadyUpToDate) {
+		return nil
+	} else {
+		return err
+	}
 }
 
 func CheckoutRef(gitSource string, ref string, privateKey string, destDir string) error {
