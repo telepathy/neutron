@@ -43,6 +43,15 @@ func NewGitLabLauncher(kubeConfigPath string, namespace string, runnerConfig Run
 
 func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 	ts := time.Now().Format("20060102-150405")
+	var checkoutCommand string
+	if l.RunnerConfig.Trigger == "MR" {
+		// for mr, fetch gitlab mr ref then checkout ref
+		checkoutCommand = fmt.Sprintf("git clone %s /repo && git fetch origin %s:%s && git checkout %s",
+			l.RunnerConfig.GitRepoUrl, l.RunnerConfig.CommitSha, l.RunnerConfig.CommitSha, l.RunnerConfig.CommitSha)
+	} else {
+		// for tag or push, checkout specific sha
+		checkoutCommand = fmt.Sprintf("git clone %s /repo && git checkout %s", l.RunnerConfig.GitRepoUrl, l.RunnerConfig.CommitSha)
+	}
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("neutron-%s-%s", l.RunnerConfig.JobName, ts),
@@ -77,11 +86,27 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 							VolumeMounts: []v1.VolumeMount{
 								{MountPath: "/pipeline", Name: "pipeline"},
 								{MountPath: "/repo", Name: "repo"},
-								{MountPath: l.RunnerConfig.GitPrivateKey, Name: "private-key", SubPath: "id_rsa", ReadOnly: true},
 							},
 						},
 					},
 					InitContainers: []v1.Container{
+						{
+							Name:  "checkout",
+							Image: l.PipelineImage,
+							Command: []string{
+								"/bin/sh",
+								"-c",
+								checkoutCommand,
+							},
+							WorkingDir: "/repo",
+							Env: []v1.EnvVar{
+								{Name: "GIT_SSH_COMMAND", Value: "ssh -o StrictHostKeyChecking=no"},
+							},
+							VolumeMounts: []v1.VolumeMount{
+								{MountPath: "/repo", Name: "repo"},
+								{MountPath: "/root/.ssh/id_rsa", Name: "private-key", SubPath: "id_rsa", ReadOnly: true},
+							},
+						},
 						{
 							Name:  "init",
 							Image: l.InitImage,
@@ -105,6 +130,7 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 								Items: []v1.KeyToPath{
 									{Key: "id_rsa", Path: "id_rsa"},
 								},
+								DefaultMode: int32Ptr(0400),
 							},
 						},
 						},
@@ -114,4 +140,8 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 		},
 	}
 	return job
+}
+
+func int32Ptr(i int32) *int32 {
+	return &i
 }
