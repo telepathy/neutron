@@ -5,29 +5,13 @@ import (
 	"neutron/internal/gitlab"
 	"neutron/internal/service"
 	"os"
-	"strings"
 )
 
 func main() {
 	runnerConfig := getConfig()
 	reporter := NewGitlabReporter(runnerConfig)
-	err := downloadProject(runnerConfig, "/repo")
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	runner := service.NewRunner("/repo", runnerConfig.Trigger, runnerConfig.JobName, reporter)
 	runner.Run()
-}
-
-func downloadProject(c gitlab.RunnerConfig, destDir string) error {
-	var err error
-	if strings.Contains(c.CommitSha, "refs/") {
-		err = service.CheckoutRef(c.GitRepoUrl, c.CommitSha, c.GitPrivateKey, destDir)
-	} else {
-		err = service.CheckoutSha(c.GitRepoUrl, c.CommitSha, c.GitPrivateKey, destDir)
-	}
-	return err
 }
 
 func getConfig() gitlab.RunnerConfig {
