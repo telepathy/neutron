@@ -79,6 +79,20 @@ func (r *Repository) GetWebhookConfig(id string) PipelineProject {
 	return webhookConfig
 }
 
+func (r *Repository) AddWebhookConfig(p PipelineProject) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec("INSERT INTO project(id, webhook_type, repo_url) VALUES (?, ?, ?)", p.Id, p.WebhookType, p.RepoUrl)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	err = tx.Commit()
+	return err
+}
+
 func (r *Repository) AddJob(job PipelineJob) error {
 	tx, err := r.db.Begin()
 	if err != nil {

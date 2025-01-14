@@ -9,18 +9,19 @@
 <body>
 <div class="container">
     <div class="row">
-        <div class="column">Register new pipeline</div>
+        <div class="column column-offset-20 column-60"><h3>Create new pipeline</h3></div>
     </div>
     <div class="row">
-        <div class="column">
-            <form action="/register-action" method="POST">
+        <div class="column column-offset-20 column-60">
+            <form action="/register" method="POST">
                 <fieldset>
                     <label for="webhookType">Type</label>
-                    <select id="webhookType">
+                    <select id="webhookType" name="webhookType">
                         <option value="GitLab">GitLab</option>
                     </select>
                     <label for="repoUrl">Repo Url(support ssh protocol only)</label>
-                    <input type="text" id="repoUrl">
+                    <input type="text" id="repoUrl" name="repoUrl">
+                    <input class="button-primary" type="submit" value="create pipeline">
                 </fieldset>
             </form>
         </div>

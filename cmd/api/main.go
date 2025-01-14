@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"gopkg.in/yaml.v3"
 	"html/template"
@@ -58,6 +59,28 @@ func main() {
 		c.HTML(http.StatusOK, "index.html", gin.H{
 			"Message": "Hello!",
 		})
+	})
+
+	r.GET("/register", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "register.html", gin.H{})
+	})
+
+	r.POST("/register", func(c *gin.Context) {
+		p := internal.PipelineProject{
+			Id:          uuid.New().String(),
+			WebhookType: c.PostForm("webhookType"),
+			RepoUrl:     c.PostForm("repoUrl"),
+		}
+		err := repo.AddWebhookConfig(p)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, err.Error())
+		} else {
+			fullHost := config.Host
+			if config.Port != 80 && config.Port != 443 {
+				fullHost = fmt.Sprintf("%s:%d", fullHost, config.Port)
+			}
+			c.HTML(http.StatusOK, "register_info.html", gin.H{"pipeline": p, "host": fullHost})
+		}
 	})
 
 	r.GET("/loot", func(c *gin.Context) {
