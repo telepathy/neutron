@@ -13,7 +13,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	"log"
 	"net/http"
 	"neutron/internal"
 	"neutron/internal/gitlab"
@@ -59,6 +58,16 @@ func main() {
 		c.HTML(http.StatusOK, "index.html", gin.H{
 			"Message": "Hello!",
 		})
+	})
+
+	r.GET("/loot", func(c *gin.Context) {
+		looter := service.NewLooter(config.Kubernetes.Namespace, repo, config.Kubernetes.KubeConfig)
+		err := looter.FetchCompletedJobLog()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, err.Error())
+		} else {
+			c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		}
 	})
 
 	r.GET("/log/:podName", func(c *gin.Context) {
@@ -206,15 +215,7 @@ func main() {
 	})
 
 	_ = r.Run(fmt.Sprintf(":%d", config.Port))
-	looter := service.NewLooter(config.Kubernetes.Namespace, repo, config.Kubernetes.KubeConfig)
-	ticker := time.NewTicker(10 * time.Minute)
-	defer ticker.Stop()
-	for range ticker.C {
-		err := looter.FetchCompletedJobLog()
-		if err != nil {
-			log.Println(err)
-		}
-	}
+
 }
 
 func isValidTrigger(currentTrigger string, validTriggers []string) bool {
