@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>neutron - a lightweight pipeline system based on kubernetes</title>
+    <link rel="stylesheet" href="/static/milligram.min.css">
+</head>
+<body>
+<div class="container">
+    <div class="row">
+        <div class="column column-offset-20 column-60"><h3>New Pipeline Created</h3></div>
+    </div>
+    <div class="row">
+        <div class="column column-offset-20 column-60">
+            <div>You have created a {{.pipeline.WebhookType}} pipeline for project {{.pipeline.RepoUrl}}.</div>
+            <div><b>ATTENTION: this page will not show again!</b> Please copy following webhook url.</div>
+            <pre id="webhook">{{.host}}/webhook/{{.pipeline.Id}}</pre>
+            <a id="copy" class="button button-outline" href="#">copy</a>
+        </div>
+
+    </div>
+</div>
+<script>
+    document.getElementById("copy").addEventListener('click', async function (){
+        try {
+            const textToCopy = document.getElementById("webhook").innerText;
+            await navigator.clipboard.writeText(textToCopy);
+            document.getElementById("copy").innerText = 'copied'
+        } catch (err) {
+            console.log("failed to copy.")
+        }
+    });
+</script>
+</body>
+</html>
