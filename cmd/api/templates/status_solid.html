@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>neutron - a lightweight pipeline system based on kubernetes</title>
+    <link rel="stylesheet" href="/static/milligram.min.css">
+</head>
+<body>
+<div class="container">
+    <div class="row">
+        <div class="column"><h3>Neutron Job - <b>{{.jobName}}</b></h3></div>
+    </div>
+    <div class="row">
+        <div class="column">A {{.status.WebhookType}}'s {{.status.TriggerType}} pipeline.</div>
+    </div>
+    <div class="row">
+        <div class="column"><a target="_blank" href="{{.status.ProjectUrl}}">{{.status.RepoUrl}}</a></div>
+    </div>
+    <div class="row">
+        <div class="column column-20">Active Pods: <b>{{.status.Active}}</b></div>
+        <div class="column column-20">Succeeded Pods: <b>{{.status.Succeeded}}</b></div>
+        <div class="column column-20">Failed Pods: <b>{{.status.Failed}}</b></div>
+    </div>
+    <div class="row">
+        <div class="column">
+            <table>
+                <thead><tr><th>Pod</th><th>Status</th></tr></thead>
+                <tbody>
+                {{ range .pods }}
+                <tr><td><a target="_blank" href="/log/{{.Name}}">{{.Name}}</a></td><td>{{.Status}}</td></tr>
+                {{ end }}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+</body>
+</html>

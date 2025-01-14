@@ -13,10 +13,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"log"
 	"net/http"
 	"neutron/internal"
 	"neutron/internal/gitlab"
 	"neutron/internal/model"
+	"neutron/internal/service"
 	"os"
 	"strconv"
 	"time"
@@ -60,9 +62,19 @@ func main() {
 	})
 
 	r.GET("/log/:podName", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "log.html", gin.H{
-			"PodName": c.Param("podName"),
-		})
+		podName := c.Param("podName")
+		log, _ := repo.GetLogs(podName)
+		if log != "" {
+			c.HTML(http.StatusOK, "log_solid.html", gin.H{
+				"PodName": podName,
+				"Log":     log,
+			})
+		} else {
+			c.HTML(http.StatusOK, "log.html", gin.H{
+				"PodName": c.Param("podName"),
+			})
+		}
+
 	})
 
 	r.POST("/webhook/:id", func(c *gin.Context) {
@@ -105,6 +117,14 @@ func main() {
 					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 					return
 				}
+				err = repo.AddJob(internal.PipelineJob{
+					ProjectId: id,
+					Name:      createdJob.Name,
+					Status:    "",
+				})
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				}
 				jobs = append(jobs, createdJob.Name)
 			}
 		}
@@ -133,22 +153,28 @@ func main() {
 
 	r.GET("/status/:jobName", func(c *gin.Context) {
 		jobName := c.Param("jobName")
-		jobClient := clientSet.BatchV1().Jobs(config.Kubernetes.Namespace)
-		job, err := jobClient.Get(context.Background(), jobName, metav1.GetOptions{})
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		status, err := repo.GetJobStatus(jobName)
+		if err == nil {
+			pods, _ := repo.GetPodStatus(jobName)
+			c.HTML(http.StatusOK, "status_solid.html", gin.H{"jobName": jobName, "status": status, "pods": pods})
+		} else {
+			jobClient := clientSet.BatchV1().Jobs(config.Kubernetes.Namespace)
+			job, err := jobClient.Get(context.Background(), jobName, metav1.GetOptions{})
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			}
+			podClient := clientSet.CoreV1().Pods(config.Kubernetes.Namespace)
+			selector, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+				MatchLabels: job.Spec.Selector.MatchLabels,
+			})
+			pods, err := podClient.List(context.Background(), metav1.ListOptions{
+				LabelSelector: selector.String(),
+			})
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			}
+			c.HTML(http.StatusOK, "status.html", gin.H{"job": job, "pods": pods})
 		}
-		podClient := clientSet.CoreV1().Pods(config.Kubernetes.Namespace)
-		selector, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-			MatchLabels: job.Spec.Selector.MatchLabels,
-		})
-		pods, err := podClient.List(context.Background(), metav1.ListOptions{
-			LabelSelector: selector.String(),
-		})
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		}
-		c.HTML(http.StatusOK, "status.html", gin.H{"job": job, "pods": pods})
 	})
 
 	r.GET("/ws/logs/:podName", func(c *gin.Context) {
@@ -180,6 +206,15 @@ func main() {
 	})
 
 	_ = r.Run(fmt.Sprintf(":%d", config.Port))
+	looter := service.NewLooter(config.Kubernetes.Namespace, repo, config.Kubernetes.KubeConfig)
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		err := looter.FetchCompletedJobLog()
+		if err != nil {
+			log.Println(err)
+		}
+	}
 }
 
 func isValidTrigger(currentTrigger string, validTriggers []string) bool {
