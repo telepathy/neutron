@@ -8,7 +8,7 @@
 </head>
 <body style="margin:0">
 <div class="container">
-    <div style="text-align: center; padding-top: 100px;">
+    <div style="text-align: center; padding-top: 80px;">
         <h1>neutron</h1>
         <p>a lightweight pipeline system based on kubernetes</p>
     </div>
@@ -18,7 +18,44 @@
     <div class="row">
         <div class="column">
             <div style="text-align: center;">
+                <h4>Enjoy neutron pipeline in 3 steps.</h4>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="column">
+            <div style="text-align: center;">
+                <h3>1</h3>
+                Define a pipeline with <b>neutron.yaml</b>.
+                <pre style="text-align: left">jobs:
+  neutron-build:
+    image: "golang:latest"
+    trigger: ["MR","PUSH"]
+    steps:
+      - name: "build"
+        cmd: "make cli api"</pre>
+            </div>
+        </div>
+        <div class="column">
+            <div style="text-align: center;">
+                <h3>2</h3>
+                <p>Register a new pipeline in neutron system.</p>
+                <p>Add neutron public key to your code base.</p>
                 <a href="/register" class="button">Create pipeline</a>
+            </div>
+        </div>
+        <div class="column">
+            <div style="text-align: center;">
+                <h3>3</h3>
+                <p>Configure webhook trigger.</p>
+                <p>PUSH, MERGE and TAG are supported now.</p>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="column">
+            <div style="text-align: center; padding-top: 50px;">
+                Designed with &hearts; by Shi Mengjie. Licensed under the GPLv3 License.
             </div>
         </div>
     </div>
