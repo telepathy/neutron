@@ -159,6 +159,8 @@ func main() {
 				}
 				jobs = append(jobs, createdJob.Name)
 			}
+		case "CodeUp":
+			c.JSON(http.StatusOK, gin.H{"status": "ok"})
 		}
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
