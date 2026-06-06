@@ -1,0 +1,2 @@
+FROM busybox:latest
+COPY bin/neutron-gitlab-runner-linux /runner

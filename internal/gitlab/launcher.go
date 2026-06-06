@@ -104,9 +104,7 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 							Name:  "init",
 							Image: l.InitImage,
 							Command: []string{
-								"/bin/sh",
-								"-c",
-								fmt.Sprintf("curl -k -o /pipeline/runner %s/runner-bin/gitlab && chmod a+x /pipeline/runner", neutronHost),
+								"cp", "/runner", "/pipeline/runner",
 							},
 							VolumeMounts: []v1.VolumeMount{
 								{MountPath: "/pipeline", Name: "pipeline"},

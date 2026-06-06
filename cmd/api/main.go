@@ -27,9 +27,6 @@ import (
 	"time"
 )
 
-//go:embed files/*
-var runnerBinFs embed.FS
-
 //go:embed static/*
 var staticFs embed.FS
 
@@ -200,17 +197,6 @@ func main() {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "pipeline": pipeline, "jobs": jobs})
-	})
-
-	r.GET("/runner-bin/:type", func(c *gin.Context) {
-		runnerBinFile := fmt.Sprintf("files/neutron-%s-runner", c.Param("type"))
-		fileContent, err := runnerBinFs.ReadFile(runnerBinFile)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		c.Header("Content-Disposition", "attachment; filename=\"runner\"")
-		c.Data(http.StatusOK, "application/octet-stream", fileContent)
 	})
 
 	r.GET("/status/:jobName", func(c *gin.Context) {
