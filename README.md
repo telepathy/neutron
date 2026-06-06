@@ -14,7 +14,7 @@ Neutron is a lightweight CI/CD pipeline system built on Kubernetes. It consists 
 4. For each job whose `trigger` list matches the current trigger type, a Kubernetes Job is created
 5. Each K8s Job has two init containers:
    - **checkout** — clones the repository using SSH
-   - **init** — downloads the embedded runner binary from the API server
+   - **init** — copies the runner binary from the runner Docker image
 6. The main container runs the runner binary, which reads `neutron.yaml`, executes steps sequentially, and reports status to GitLab
 7. The Looter (`/loot`) collects logs from completed pods into MySQL
 
@@ -30,11 +30,16 @@ Neutron is a lightweight CI/CD pipeline system built on Kubernetes. It consists 
 ### 1. Build
 
 ```bash
-# Build the runner binary first (it gets embedded into the API server)
-make gitlab
+# Build both Docker images (API server + runner) and load into kind
+make kind-load
 
-# Build the API server
-make api
+# Or build individually:
+make docker-api      # API server image
+make docker-runner   # Runner image
+
+# Local binaries only (no Docker):
+make api             # macOS binary
+make gitlab          # macOS runner binary
 ```
 
 ### 2. Configure
@@ -55,8 +60,8 @@ codebase:
 kubernetes:
   kube-config: "/path/to/.kube/config"
   namespace: "default"
-  git-private-key: "git-ssh-secret"   # K8s secret name containing SSH key for git clone
-  init-image: "curlimages/curl:latest" # image used by init container to download runner binary
+  git-private-key: "git-ssh-secret"     # K8s secret name containing SSH key for git clone
+  init-image: "neutron-runner:latest"   # runner image, init container copies runner binary from it
 ```
 
 ### 3. Initialize database
@@ -118,7 +123,7 @@ Each K8s Job creates three containers. The pipeline image (specified in `neutron
 | Container | Purpose | Required tools | Configured in |
 |-----------|---------|---------------|---------------|
 | **checkout** (init) | Clone repo, merge source branch for MR | `git`, `ssh` client | Uses job's `image` |
-| **init** (init) | Download runner binary from API server | `curl` or `wget` | `config.yaml` → `kubernetes.init-image` |
+| **init** (init) | Copy runner binary from runner image | `cp` (busybox built-in) | `config.yaml` → `kubernetes.init-image` (runner image) |
 | **pipeline** (main) | Execute pipeline steps | `/bin/sh` + business dependencies | `neutron.yaml` → `image` |
 
 **Common pitfalls:**
@@ -135,7 +140,7 @@ Each K8s Job creates three containers. The pipeline image (specified in `neutron
 | Node.js | `node:18-alpine` (includes git via apk) |
 | Go | `golang:1.23-alpine` (includes git) |
 | Python | `python:3.12-slim` (no git, install via apt) |
-| Runner download only | `curlimages/curl:latest` |
+| Runner init container | `neutron-runner:local` (built by `make docker-runner`) |
 
 ## Register a project
 

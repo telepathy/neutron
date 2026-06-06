@@ -27,12 +27,8 @@ docker network connect kind neutron-mysql
 # 5. 创建 K8s Secret
 kubectl create secret generic git-ssh-secret --from-file=id_rsa=$HOME/.ssh/id_ed25519
 
-# 6. 交叉编译并构建镜像
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o bin/neutron-api-linux cmd/api/main.go
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o bin/neutron-gitlab-runner cmd/gitlab-runner/*.go
-cp bin/neutron-gitlab-runner cmd/api/files/
-docker build -t neutron-api:local .
-kind load docker-image neutron-api:local --name neutron
+# 6. 构建并加载镜像（API server + runner）
+make kind-load
 
 # 7. 部署
 kubectl apply -f k8s-deploy.yaml
@@ -52,7 +48,7 @@ kubectl apply -f k8s-deploy.yaml
 | 容器 | 用途 | 必需工具 | 配置来源 |
 |------|------|---------|---------|
 | checkout (init) | clone 仓库、MR 合并 | `git`, `ssh` 客户端 | 复用 job 的 `image` |
-| init (init) | 下载 runner 二进制 | `curl` 或 `wget` | `config.yaml` → `init-image` |
+| init (init) | 从 runner 镜像复制二进制 | `cp`（busybox 自带） | `config.yaml` → `init-image`（runner 镜像） |
 | pipeline (main) | 执行流水线步骤 | `/bin/sh` + 业务依赖 | `neutron.yaml` → `image` |
 
 **注意：** checkout 容器复用 pipeline 的 image，因此 `image` 必须包含 `git` 和 SSH 客户端。`alpine:latest` 等精简镜像不包含这些工具，会导致 git clone 失败。
@@ -61,7 +57,7 @@ kubectl apply -f k8s-deploy.yaml
 - `alpine/git:latest` — 通用，含 git 和 ssh
 - `node:18-alpine` — Node.js 项目
 - `golang:1.23-alpine` — Go 项目
-- `curlimages/curl:latest` — init 容器专用
+- `neutron-runner:local` — init 容器专用（由 `make docker-runner` 构建）
 
 ---
 
