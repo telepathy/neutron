@@ -57,6 +57,12 @@ codebase:
     url: "https://gitlab.example.com"
     token: "your-gitlab-private-token"
 
+# Optional: pod-side codebase addresses (if pods access GitLab differently than the API server)
+# pod_codebase:
+#   GitLab:
+#     url: "http://gitlab.default.svc.cluster.local"
+#     token: "your-gitlab-private-token"
+
 kubernetes:
   kube-config: "/path/to/.kube/config"
   namespace: "default"
@@ -170,7 +176,6 @@ POST http://your-neutron-host/webhook/<uuid>
 | GET | `/log/:podName` | View pod log (from DB or live via K8s API) |
 | GET | `/ws/logs/:podName` | WebSocket live log streaming |
 | GET | `/loot` | Collect logs from completed K8s jobs into MySQL |
-| GET | `/runner-bin/:type` | Download the embedded runner binary |
 
 ## Database schema
 
@@ -186,7 +191,6 @@ Three tables (`dds.sql`):
 cmd/
   api/              # API server (Gin framework)
     main.go
-    files/          # embedded runner binary (go:embed)
     static/         # embedded CSS + architecture diagram
     templates/      # embedded HTML templates
   gitlab-runner/    # runner binary (runs inside K8s pods)
@@ -195,7 +199,7 @@ cmd/
 internal/
   gitlab/
     parser.go       # webhook parsing + neutron.yaml fetching
-    laucher.go      # K8s Job creation
+    launcher.go     # K8s Job creation
   model/
     config.go       # application config struct
     pipeline.go     # Pipeline/Job/Step models + interfaces

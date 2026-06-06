@@ -9,18 +9,18 @@ Neutron is a lightweight CI/CD pipeline system built on Kubernetes. It receives 
 ## Build Commands
 
 ```bash
-# Build the API server (must build runner first)
-make gitlab   # builds runner binary → bin/neutron-gitlab-runner, copies to cmd/api/files/ (embedded via go:embed)
+make gitlab   # builds runner binary → bin/neutron-gitlab-runner
 make api      # builds API server → bin/neutron-api (CGO_ENABLED=0, statically linked)
 
 # Full rebuild
 make clean && make gitlab && make api
 
+# Build Docker images and load into kind
+make kind-load
+
 # Run tests (none exist yet)
 go test ./...
 ```
-
-**Important build order:** `make gitlab` must run before `make api` — the runner binary is embedded into the API server binary via `//go:embed files/*` in `cmd/api/main.go`.
 
 ## Architecture
 
@@ -29,7 +29,6 @@ go test ./...
 **API Server** (`cmd/api/main.go`) — Gin-based HTTP server:
 - `/register` — registers a project webhook (stores in MySQL with UUID)
 - `/webhook/:id` — receives GitLab webhooks, fetches `neutron.yaml` from the repo, creates K8s Jobs
-- `/runner-bin/:type` — serves the embedded runner binary to pods
 - `/ws/logs/:podName` — WebSocket live log streaming
 - `/status/:jobName` — job/pod status view
 - `/loot` — triggers log collection from completed K8s jobs into MySQL
@@ -44,17 +43,17 @@ go test ./...
 
 1. GitLab webhook → `/webhook/:id`
 2. API server parses webhook, fetches `neutron.yaml` via GitLab API
-3. API server creates K8s Job (init containers: git-clone repo + download runner binary)
+3. API server creates K8s Job (init containers: git-clone repo + copy runner binary from runner image)
 4. Main container runs runner binary → reads `neutron.yaml` → executes steps → reports to GitLab
 5. Looter (manual or cron) collects logs from completed pods into MySQL
 
 ### Key Packages
 
-- `internal/gitlab/` — webhook parsing (`parser.go`) and K8s Job creation (`laucher.go`)
+- `internal/gitlab/` — webhook parsing (`parser.go`) and K8s Job creation (`launcher.go`)
 - `internal/model/` — domain models: `Config`, `Pipeline`, `Job`, `Step` + repository interfaces
 - `internal/service/` — `Runner` (step execution) and `Looter` (log collection)
 - `internal/repo.go` — MySQL data access (Repository pattern)
-- `cmd/api/` — API server with embedded static files, templates, and runner binary
+- `cmd/api/` — API server with embedded static files and templates
 - `cmd/gitlab-runner/` — runner binary + reporter
 
 ### Database (MySQL)
@@ -63,7 +62,7 @@ Three tables defined in `dds.sql`: `project` (id, webhook_type, repo_url), `job`
 
 ### Configuration
 
-Runtime config is `config.yaml` (gitignored). Shape defined by `internal/model/config.go`: host, port, database (MySQL DSN), salt, codebase map (url/token pairs), kubernetes (kube-config path, namespace, git-private-key secret, init-image).
+Runtime config is `config.yaml` (gitignored). Shape defined by `internal/model/config.go`: host, port, database (MySQL DSN), salt, codebase map (url/token pairs), pod_codebase (pod-side codebase addresses, optional), kubernetes (kube-config path, namespace, git-private-key secret, init-image).
 
 ## Conventions
 
