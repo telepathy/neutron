@@ -2,7 +2,7 @@ package main
 
 import (
 	"log"
-	"neutron/internal/gitlab"
+	"neutron/internal/model"
 	"neutron/internal/service"
 	"os"
 )
@@ -14,7 +14,7 @@ func main() {
 	runner.Run()
 }
 
-func getConfig() gitlab.RunnerConfig {
+func getConfig() model.RunnerConfig {
 	gitlabUrl := os.Getenv("GITLAB_URL")
 	if gitlabUrl == "" {
 		log.Fatalln("GITLAB_URL is not set. Pipeline exit now.")
@@ -25,7 +25,7 @@ func getConfig() gitlab.RunnerConfig {
 	}
 	projectId := os.Getenv("GITLAB_PROJECT_ID")
 	if projectId == "" {
-		log.Fatalln("GITLAB_URL is not set. Pipeline exit now.")
+		log.Fatalln("GITLAB_PROJECT_ID is not set. Pipeline exit now.")
 	}
 	commitSha := os.Getenv("GITLAB_COMMIT_SHA")
 	if commitSha == "" {
@@ -55,7 +55,7 @@ func getConfig() gitlab.RunnerConfig {
 	if pipelineUrl == "" {
 		log.Fatalln("PIPELINE_URL is not set. Pipeline exit now.")
 	}
-	return gitlab.RunnerConfig{
+	return model.RunnerConfig{
 		GitlabToken:   gitlabToken,
 		GitlabUrl:     gitlabUrl,
 		ProjectId:     projectId,

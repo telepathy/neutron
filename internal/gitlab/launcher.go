@@ -2,35 +2,24 @@ package gitlab
 
 import (
 	"fmt"
+	"strings"
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"neutron/internal/model"
 	"time"
 )
-
-type RunnerConfig struct {
-	GitlabToken   string
-	GitlabUrl     string
-	ProjectId     string
-	CommitSha     string
-	ReportSha     string
-	Trigger       string
-	JobName       string
-	GitRepoUrl    string
-	GitPrivateKey string
-	PipelineUrl   string
-}
 
 type Launcher struct {
 	KubeConfigPath string
 	Namespace      string
-	RunnerConfig   RunnerConfig
+	RunnerConfig   model.RunnerConfig
 	InitImage      string
 	PipelineImage  string
 	SshKeyName     string
 }
 
-func NewGitLabLauncher(kubeConfigPath string, namespace string, runnerConfig RunnerConfig, initImage string, baseImage string, keyName string) *Launcher {
+func NewGitLabLauncher(kubeConfigPath string, namespace string, runnerConfig model.RunnerConfig, initImage string, baseImage string, keyName string) *Launcher {
 	return &Launcher{
 		KubeConfigPath: kubeConfigPath,
 		Namespace:      namespace,
@@ -45,12 +34,15 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 	ts := time.Now().Format("20060102-150405")
 	var checkoutCommand string
 	if l.RunnerConfig.Trigger == "MR" {
-		// for mr, fetch gitlab mr ref then checkout ref
-		checkoutCommand = fmt.Sprintf("git clone %s /repo && git fetch origin %s:%s && git checkout %s",
-			l.RunnerConfig.GitRepoUrl, l.RunnerConfig.CommitSha, l.RunnerConfig.CommitSha, l.RunnerConfig.CommitSha)
+		// clone 目标分支，拉取源 commit，合并后测试
+		checkoutCommand = fmt.Sprintf(
+			"git clone --branch %s %s /repo && cd /repo && git config user.email neutron@ci && git config user.name neutron && git fetch origin %s && git merge --no-edit %s",
+			shellEscape(l.RunnerConfig.TargetBranch), shellEscape(l.RunnerConfig.GitRepoUrl),
+			shellEscape(l.RunnerConfig.CommitSha), shellEscape(l.RunnerConfig.CommitSha))
 	} else {
 		// for tag or push, checkout specific sha
-		checkoutCommand = fmt.Sprintf("git clone %s /repo && git checkout %s", l.RunnerConfig.GitRepoUrl, l.RunnerConfig.CommitSha)
+		checkoutCommand = fmt.Sprintf("git clone %s /repo && git checkout %s",
+			shellEscape(l.RunnerConfig.GitRepoUrl), shellEscape(l.RunnerConfig.CommitSha))
 	}
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -64,6 +56,7 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 			},
 		},
 		Spec: batchv1.JobSpec{
+			BackoffLimit: int32Ptr(0),
 			Template: v1.PodTemplateSpec{
 				Spec: v1.PodSpec{
 					Containers: []v1.Container{
@@ -144,4 +137,9 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 
 func int32Ptr(i int32) *int32 {
 	return &i
+}
+
+// shellEscape wraps a string in single quotes for safe use in shell commands.
+func shellEscape(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }

@@ -19,6 +19,20 @@ type Step struct {
 	Command  string `yaml:"cmd"`
 }
 
+type RunnerConfig struct {
+	GitlabToken   string
+	GitlabUrl     string
+	ProjectId     string
+	CommitSha     string
+	ReportSha     string
+	Trigger       string
+	JobName       string
+	GitRepoUrl    string
+	GitPrivateKey string
+	PipelineUrl   string
+	TargetBranch  string // MR 目标分支，用于合并测试
+}
+
 type StepResult string
 
 const (

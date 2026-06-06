@@ -10,6 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"html/template"
 	"io/fs"
+	"log"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -18,6 +19,8 @@ import (
 	"neutron/internal"
 	"neutron/internal/gitlab"
 	"neutron/internal/model"
+	"os/signal"
+	"syscall"
 	"neutron/internal/service"
 	"os"
 	"strconv"
@@ -35,8 +38,17 @@ var htmlFs embed.FS
 
 func main() {
 	var config model.Config
-	data, _ := os.ReadFile("./config.yaml")
-	_ = yaml.Unmarshal(data, &config)
+	configPath := "./config.yaml"
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		configPath = "config.yaml"
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		log.Fatalf("cannot read config file: %v", err)
+	}
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		log.Fatalf("cannot parse config file: %v", err)
+	}
 	repo := internal.NewRepository(config)
 
 	kubeConfig, err := clientcmd.BuildConfigFromFlags("", config.Kubernetes.KubeConfig)
@@ -50,8 +62,11 @@ func main() {
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
-	staticFs, err := fs.Sub(staticFs, "static")
-	r.StaticFS("/static", http.FS(staticFs))
+	subStaticFs, err := fs.Sub(staticFs, "static")
+	if err != nil {
+		log.Fatalf("cannot load embedded static files: %v", err)
+	}
+	r.StaticFS("/static", http.FS(subStaticFs))
 	tmpl := template.Must(template.ParseFS(htmlFs, "templates/*"))
 	r.SetHTMLTemplate(tmpl)
 
@@ -83,8 +98,9 @@ func main() {
 		}
 	})
 
+	looter := service.NewLooter(config.Kubernetes.Namespace, repo, clientSet)
+
 	r.GET("/loot", func(c *gin.Context) {
-		looter := service.NewLooter(config.Kubernetes.Namespace, repo, config.Kubernetes.KubeConfig)
 		err := looter.FetchCompletedJobLog()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, err.Error())
@@ -112,20 +128,37 @@ func main() {
 	r.POST("/webhook/:id", func(c *gin.Context) {
 		id := c.Param("id")
 		webhookConfig := repo.GetWebhookConfig(id)
+		if webhookConfig.Id == "" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "webhook not found"})
+			return
+		}
 		var pipeline model.Pipeline
 		var err error
 		var jobs []string
 		switch webhookConfig.WebhookType {
 		case "GitLab":
-			p := gitlab.NewGitLabParser(c.Request.Body, config.BaseConfig["GitLab"].Url, config.BaseConfig["GitLab"].Token)
+			p, parseErr := gitlab.NewGitLabParser(c.Request.Body, config.BaseConfig["GitLab"].Url, config.BaseConfig["GitLab"].Token)
+			if parseErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": parseErr.Error()})
+				return
+			}
 			pipeline, err = p.Parse()
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to parse pipeline: %v", err)})
+				return
+			}
 			for jobName, job := range pipeline.Jobs {
 				if !isValidTrigger(p.Trigger, job.Trigger) {
 					continue
 				}
-				runnerConfig := gitlab.RunnerConfig{
-					GitlabToken:   config.BaseConfig["GitLab"].Token,
-					GitlabUrl:     config.BaseConfig["GitLab"].Url,
+					// Pod 内 runner 用 PodCodeBase 地址（如有），否则回退 BaseConfig
+				podGitlab := config.BaseConfig["GitLab"]
+				if pod, ok := config.PodCodeBase["GitLab"]; ok {
+					podGitlab = pod
+				}
+				runnerConfig := model.RunnerConfig{
+					GitlabToken:   podGitlab.Token,
+					GitlabUrl:     podGitlab.Url,
 					ProjectId:     strconv.Itoa(p.Request.Project.Id),
 					CommitSha:     p.CodeSha,
 					ReportSha:     p.ReportSha,
@@ -133,6 +166,7 @@ func main() {
 					Trigger:       p.Trigger,
 					GitRepoUrl:    webhookConfig.RepoUrl,
 					GitPrivateKey: "/etc/ssh/id_rsa",
+					TargetBranch:  p.TargetBranch,
 				}
 				l := gitlab.NewGitLabLauncher(
 					config.Kubernetes.KubeConfig,
@@ -156,6 +190,7 @@ func main() {
 				})
 				if err != nil {
 					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+					return
 				}
 				jobs = append(jobs, createdJob.Name)
 			}
@@ -169,15 +204,10 @@ func main() {
 
 	r.GET("/runner-bin/:type", func(c *gin.Context) {
 		runnerBinFile := fmt.Sprintf("files/neutron-%s-runner", c.Param("type"))
-		file, err := runnerBinFs.Open(runnerBinFile)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		}
-		defer file.Close()
-
 		fileContent, err := runnerBinFs.ReadFile(runnerBinFile)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
 		}
 		c.Header("Content-Disposition", "attachment; filename=\"runner\"")
 		c.Data(http.StatusOK, "application/octet-stream", fileContent)
@@ -216,12 +246,13 @@ func main() {
 		}
 		conn, err := u.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
 		}
 		defer conn.Close()
 		logStream, err := clientSet.CoreV1().Pods(config.Kubernetes.Namespace).GetLogs(podName, &corev1.PodLogOptions{Follow: true}).Stream(context.TODO())
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			conn.Close()
+			return
 		}
 		defer logStream.Close()
 		buffer := make([]byte, 1024)
@@ -237,7 +268,27 @@ func main() {
 		}
 	})
 
-	_ = r.Run(fmt.Sprintf(":%d", config.Port))
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", config.Port),
+		Handler: r,
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen error: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("shutting down server...")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("server forced shutdown: %v", err)
+	}
+	log.Println("server exited")
 
 }
 

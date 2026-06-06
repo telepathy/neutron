@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neutron-api
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neutron-api
+  template:
+    metadata:
+      labels:
+        app: neutron-api
+    spec:
+      hostNetwork: true
+      containers:
+        - name: neutron-api
+          image: neutron-api:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8888
+          volumeMounts:
+            - name: kubeconfig
+              mountPath: /kubeconfig
+              readOnly: true
+      volumes:
+        - name: kubeconfig
+          secret:
+            secretName: neutron-kubeconfig
+            items:
+              - key: config
+                path: config

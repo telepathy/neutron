@@ -2,14 +2,15 @@ package service
 
 import (
 	"context"
+	"log"
+	"neutron/internal"
+	"strings"
+	"sync"
+
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
-	"log"
-	"neutron/internal"
-	"sync"
 )
 
 type Looter struct {
@@ -18,15 +19,7 @@ type Looter struct {
 	Repo      *internal.Repository
 }
 
-func NewLooter(namespace string, repo *internal.Repository, configFile string) *Looter {
-	kubeConfig, err := clientcmd.BuildConfigFromFlags("", configFile)
-	if err != nil {
-		log.Fatal(err)
-	}
-	clientset, err := kubernetes.NewForConfig(kubeConfig)
-	if err != nil {
-		log.Fatal(err)
-	}
+func NewLooter(namespace string, repo *internal.Repository, clientset *kubernetes.Clientset) *Looter {
 	return &Looter{
 		Clientset: clientset,
 		Namespace: namespace,
@@ -55,7 +48,9 @@ func (l *Looter) FetchCompletedJobLog() error {
 						log.Printf("error to fetch job logs, job_name=%s, err=%v\n", job.Name, err)
 					} else {
 						log.Printf("fetch job logs, job_name=%s\n", job.Name)
-						_ = looter.removeJobs(job.Name)
+						if delErr := looter.removeJobs(job.Name); delErr != nil {
+							log.Printf("warning: failed to delete job %s: %v\n", job.Name, delErr)
+						}
 					}
 				}
 			}
@@ -67,7 +62,7 @@ func (l *Looter) FetchCompletedJobLog() error {
 	}
 	close(jobChan)
 	wg.Wait()
-	return err
+	return nil
 }
 
 func (l *Looter) processJob(ctx context.Context, job *batchv1.Job) error {
@@ -104,7 +99,6 @@ func (l *Looter) processJob(ctx context.Context, job *batchv1.Job) error {
 }
 
 func (l *Looter) fetchJobLogs(ctx context.Context, pod corev1.Pod) (string, error) {
-	var logs string
 	podLogOpts := &corev1.PodLogOptions{}
 	logsRequest := l.Clientset.CoreV1().Pods(l.Namespace).GetLogs(pod.Name, podLogOpts)
 	stream, err := logsRequest.Stream(ctx)
@@ -113,6 +107,7 @@ func (l *Looter) fetchJobLogs(ctx context.Context, pod corev1.Pod) (string, erro
 	}
 	defer stream.Close()
 
+	var builder strings.Builder
 	buf := make([]byte, 32*1024)
 	for {
 		n, err := stream.Read(buf)
@@ -120,15 +115,14 @@ func (l *Looter) fetchJobLogs(ctx context.Context, pod corev1.Pod) (string, erro
 			break
 		}
 		if n > 0 {
-			logs += string(buf[:n])
+			builder.Write(buf[:n])
 		}
 	}
-	return logs, nil
+	return builder.String(), nil
 }
 
 func (l *Looter) removeJobs(jobName string) error {
-	err := l.Clientset.BatchV1().Jobs(l.Namespace).Delete(context.Background(), jobName, metav1.DeleteOptions{})
-	return err
+	return l.Clientset.BatchV1().Jobs(l.Namespace).Delete(context.Background(), jobName, metav1.DeleteOptions{})
 }
 
 func isJobCompleted(job *batchv1.Job) bool {

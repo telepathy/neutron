@@ -3,5 +3,8 @@ bin/
 *.http
 vendor/
 config.yaml
+config-kind.yaml
 cmd/api/files/
 test.yaml
+/api
+/gitlab-runner

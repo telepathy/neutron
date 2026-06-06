@@ -66,59 +66,35 @@ func (r *Repository) Close() {
 }
 
 func (r *Repository) GetWebhookConfig(id string) PipelineProject {
-	row, err := r.db.Query("SELECT webhook_type,id,repo_url FROM project WHERE id=?", id)
-	defer row.Close()
 	var webhookConfig PipelineProject
+	row, err := r.db.Query("SELECT webhook_type,id,repo_url FROM project WHERE id=?", id)
 	if err != nil {
 		return webhookConfig
 	}
+	defer row.Close()
 	for row.Next() {
-		err = row.Scan(&webhookConfig.WebhookType, &webhookConfig.Id, &webhookConfig.RepoUrl)
+		_ = row.Scan(&webhookConfig.WebhookType, &webhookConfig.Id, &webhookConfig.RepoUrl)
 		break
 	}
 	return webhookConfig
 }
 
 func (r *Repository) AddWebhookConfig(p PipelineProject) error {
-	tx, err := r.db.Begin()
-	if err != nil {
-		return err
-	}
-	_, err = r.db.Exec("INSERT INTO project(id, webhook_type, repo_url) VALUES (?, ?, ?)", p.Id, p.WebhookType, p.RepoUrl)
-	if err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	err = tx.Commit()
+	_, err := r.db.Exec("INSERT INTO project(id, webhook_type, repo_url) VALUES (?, ?, ?)", p.Id, p.WebhookType, p.RepoUrl)
 	return err
 }
 
 func (r *Repository) AddJob(job PipelineJob) error {
-	tx, err := r.db.Begin()
-	if err != nil {
-		return err
-	}
-	_, err = r.db.Exec("INSERT INTO job(project_id, name, status) VALUES(?, ?, ?)", job.ProjectId, job.Name, job.Status)
-	if err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	err = tx.Commit()
+	_, err := r.db.Exec("INSERT INTO job(project_id, name, status) VALUES(?, ?, ?)", job.ProjectId, job.Name, job.Status)
 	return err
 }
 
 func (r *Repository) UpdateJobStatus(jobName string, status JobStatus) error {
-	tx, err := r.db.Begin()
-	if err != nil {
-		return err
-	}
 	statusBytes, err := json.Marshal(status)
-	_, err = r.db.Exec("UPDATE job SET status=? WHERE name=?", string(statusBytes), jobName)
 	if err != nil {
-		_ = tx.Rollback()
 		return err
 	}
-	err = tx.Commit()
+	_, err = r.db.Exec("UPDATE job SET status=? WHERE name=?", string(statusBytes), jobName)
 	return err
 }
 
@@ -130,25 +106,20 @@ func (r *Repository) GetJobStatus(jobName string) (JobStatus, error) {
 	defer row.Close()
 	var statusString string
 	for row.Next() {
-		err = row.Scan(&statusString)
+		if err := row.Scan(&statusString); err != nil {
+			return JobStatus{}, err
+		}
 		break
 	}
 	var result JobStatus
-	err = json.Unmarshal([]byte(statusString), &result)
-	return result, err
+	if err := json.Unmarshal([]byte(statusString), &result); err != nil {
+		return JobStatus{}, err
+	}
+	return result, nil
 }
 
 func (r *Repository) AddPodLog(jobName string, podName string, content string, status string) error {
-	tx, err := r.db.Begin()
-	if err != nil {
-		return err
-	}
-	_, err = r.db.Exec("INSERT INTO log (job_name, pod_name, content, status) VALUES(?, ?, ?, ?)", jobName, podName, content, status)
-	if err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	err = tx.Commit()
+	_, err := r.db.Exec("INSERT INTO log (job_name, pod_name, content, status) VALUES(?, ?, ?, ?)", jobName, podName, content, status)
 	return err
 }
 
@@ -158,11 +129,10 @@ func (r *Repository) GetPodStatus(jobName string) ([]PodStatus, error) {
 		return nil, err
 	}
 	defer row.Close()
-	podStatus := make([]PodStatus, 0)
+	var podStatus []PodStatus
 	for row.Next() {
 		var p PodStatus
-		err = row.Scan(&p.Name, &p.Status)
-		if err != nil {
+		if err := row.Scan(&p.Name, &p.Status); err != nil {
 			return nil, err
 		}
 		podStatus = append(podStatus, p)
@@ -176,10 +146,12 @@ func (r *Repository) GetLogs(podName string) (string, error) {
 		return "", err
 	}
 	defer row.Close()
-	content := ""
+	var content string
 	for row.Next() {
-		err = row.Scan(&content)
+		if err := row.Scan(&content); err != nil {
+			return "", err
+		}
 		break
 	}
-	return content, err
+	return content, nil
 }

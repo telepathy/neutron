@@ -2,7 +2,6 @@ package service
 
 import (
 	"fmt"
-	"github.com/kballard/go-shellquote"
 	"gopkg.in/yaml.v3"
 	"log"
 	"neutron/internal/model"
@@ -32,14 +31,14 @@ func NewRunner(workingDir string, triggerType string, jobName string, reporter m
 	if _, ok := pipeline.Jobs[jobName]; !ok {
 		log.Fatalf("pipeline job %s not found", jobName)
 	}
-	flag := false
+	matched := false
 	for _, t := range pipeline.Jobs[jobName].Trigger {
 		if t == triggerType {
-			flag = true
+			matched = true
 			break
 		}
 	}
-	if !flag {
+	if !matched {
 		reporter.Report(jobName, "", model.Success, fmt.Sprintf("Current job skipped in %s.", triggerType))
 		os.Exit(0)
 	}
@@ -60,25 +59,28 @@ func (r *Runner) Run() {
 
 	// run in seq
 	for runStepIndex, step := range r.Steps {
-		r.Reporter.Report(r.JobName, step.StepName, model.Running, "pipeline started.")
-		parts, err := shellquote.Split(step.Command)
-		if err != nil {
-			r.Reporter.Report(r.JobName, step.StepName, model.Fail, "wrong command format.")
+		if step.Command == "" {
+			r.Reporter.Report(r.JobName, step.StepName, model.Fail, "empty command.")
+			r.failRemaining(runStepIndex)
+			os.Exit(1)
 		}
-		cmd := exec.Command(parts[0], parts[1:]...)
+		r.Reporter.Report(r.JobName, step.StepName, model.Running, "pipeline started.")
+		cmd := exec.Command("sh", "-c", step.Command)
 		cmd.Dir = r.WorkingDir
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
-			// failed current step and all after steps.
-			for i, step := range r.Steps {
-				if i >= runStepIndex {
-					r.Reporter.Report(r.JobName, step.StepName, model.Fail, "pipeline failed.")
-				}
-			}
+			errMsg := fmt.Sprintf("step failed: %v", err)
+			r.Reporter.Report(r.JobName, step.StepName, model.Fail, errMsg)
+			r.failRemaining(runStepIndex + 1)
 			os.Exit(1)
-		} else {
-			r.Reporter.Report(r.JobName, step.StepName, model.Success, "pipeline finished.")
 		}
+		r.Reporter.Report(r.JobName, step.StepName, model.Success, "pipeline finished.")
+	}
+}
+
+func (r *Runner) failRemaining(fromIndex int) {
+	for i := fromIndex; i < len(r.Steps); i++ {
+		r.Reporter.Report(r.JobName, r.Steps[i].StepName, model.Fail, "pipeline failed.")
 	}
 }

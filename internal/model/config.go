@@ -6,7 +6,9 @@ type Config struct {
 	Database   string              `yaml:"database"`
 	Salt       string              `yaml:"salt"`
 	BaseConfig map[string]CodeBase `yaml:"codebase"`
-	Kubernetes KubernetesConfig    `yaml:"kubernetes"`
+	// PodCodeBase 覆盖 K8s Pod 内 runner 访问 codebase 的地址（当 Pod 网络与宿主机不同时使用）
+	PodCodeBase map[string]CodeBase `yaml:"pod_codebase,omitempty"`
+	Kubernetes  KubernetesConfig    `yaml:"kubernetes"`
 }
 
 type KubernetesConfig struct {
