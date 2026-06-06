@@ -1,4 +1,4 @@
-.PHONY: all clean
+.PHONY: all clean pre_build api gitlab
 
 BUILD_DIR=bin
 
@@ -7,10 +7,10 @@ pre_build:
 	mkdir -p $(BUILD_DIR)
 
 api:
-	CGO_ENABLED=0 go build -o $(BUILD_DIR)/neutron-api cmd/api/main.go
+	CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BUILD_DIR)/neutron-api cmd/api/main.go
 	chmod a+x $(BUILD_DIR)/neutron-api
 gitlab:
-	CGO_ENABLED=0 go build -o $(BUILD_DIR)/neutron-gitlab-runner cmd/gitlab-runner/*.go
+	CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BUILD_DIR)/neutron-gitlab-runner cmd/gitlab-runner/*.go
 	chmod a+x $(BUILD_DIR)/neutron-gitlab-runner
 	cp $(BUILD_DIR)/neutron-gitlab-runner cmd/api/files
 clean:
