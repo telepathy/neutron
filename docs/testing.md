@@ -45,6 +45,26 @@ kubectl apply -f k8s-deploy.yaml
 
 ---
 
+## 镜像要求
+
+每个 K8s Job 创建三个容器，对镜像有不同要求：
+
+| 容器 | 用途 | 必需工具 | 配置来源 |
+|------|------|---------|---------|
+| checkout (init) | clone 仓库、MR 合并 | `git`, `ssh` 客户端 | 复用 job 的 `image` |
+| init (init) | 下载 runner 二进制 | `curl` 或 `wget` | `config.yaml` → `init-image` |
+| pipeline (main) | 执行流水线步骤 | `/bin/sh` + 业务依赖 | `neutron.yaml` → `image` |
+
+**注意：** checkout 容器复用 pipeline 的 image，因此 `image` 必须包含 `git` 和 SSH 客户端。`alpine:latest` 等精简镜像不包含这些工具，会导致 git clone 失败。
+
+推荐镜像：
+- `alpine/git:latest` — 通用，含 git 和 ssh
+- `node:18-alpine` — Node.js 项目
+- `golang:1.23-alpine` — Go 项目
+- `curlimages/curl:latest` — init 容器专用
+
+---
+
 ## 触发场景测试
 
 ### 场景 1：PUSH 触发

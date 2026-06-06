@@ -107,9 +107,35 @@ jobs:
 | `image` | Docker image for the pipeline container |
 | `trigger` | List of trigger types that activate this job: `MR`, `TAG`, `PUSH` |
 | `steps[].name` | Step name, reported as commit status context |
-| `steps[].cmd` | Shell command to execute (parsed with `shellquote`) |
+| `steps[].cmd` | Shell command to execute (runs via `sh -c`, supports pipes, redirects, `&&`) |
 
 Steps run sequentially. If a step fails, all subsequent steps are marked as failed and the process exits.
+
+### Image requirements
+
+Each K8s Job creates three containers. The pipeline image (specified in `neutron.yaml`) is shared by the main container and the checkout init container, so it must include all tools needed for both.
+
+| Container | Purpose | Required tools | Configured in |
+|-----------|---------|---------------|---------------|
+| **checkout** (init) | Clone repo, merge source branch for MR | `git`, `ssh` client | Uses job's `image` |
+| **init** (init) | Download runner binary from API server | `curl` or `wget` | `config.yaml` → `kubernetes.init-image` |
+| **pipeline** (main) | Execute pipeline steps | `/bin/sh` + business dependencies | `neutron.yaml` → `image` |
+
+**Common pitfalls:**
+
+- Minimal images like `alpine:latest` do **not** include `git` or `ssh`. Use `alpine/git:latest` or install them in your image.
+- The checkout container reuses the job's `image`, so the image must have `git` and an SSH client for `git clone` to work.
+- Steps are executed via `sh -c "<cmd>"`, so shell features (pipes `|`, redirects `>`, chaining `&&`) are supported. The image must have `/bin/sh`.
+
+**Recommended base images:**
+
+| Use case | Image |
+|----------|-------|
+| General purpose with git | `alpine/git:latest` |
+| Node.js | `node:18-alpine` (includes git via apk) |
+| Go | `golang:1.23-alpine` (includes git) |
+| Python | `python:3.12-slim` (no git, install via apt) |
+| Runner download only | `curlimages/curl:latest` |
 
 ## Register a project
 
