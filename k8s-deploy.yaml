@@ -29,6 +29,42 @@ roleRef:
   name: neutron
   apiGroup: rbac.authorization.k8s.io
 ---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: neutron-config
+  namespace: default
+type: Opaque
+stringData:
+  config.yaml: |
+    host: "0.0.0.0"
+    port: 8888
+    database: "root:root@tcp(mysql.default.svc.cluster.local:3306)/neutron?charset=utf8mb4&parseTime=True&loc=Local"
+    salt: "change-me"
+    # log_url: "https://log.internal.com/view?namespace={namespace}&pod={podName}"
+    codebase:
+      GitLab:
+        url: "http://gitlab.default.svc.cluster.local"
+        token: "your-gitlab-token"
+    kubernetes:
+      namespace: "default"
+      git-private-key: "git-ssh-secret"
+      init-image: "neutron-runner:local"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neutron-api
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: neutron-api
+  ports:
+    - port: 8888
+      targetPort: 8888
+      nodePort: 30080
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -51,7 +87,17 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8888
+          volumeMounts:
+            - name: config
+              mountPath: /config.yaml
+              subPath: config.yaml
+            - name: kubeconfig
+              mountPath: /kubeconfig
+              readOnly: true
       volumes:
+        - name: config
+          secret:
+            secretName: neutron-config
         - name: kubeconfig
           secret:
             secretName: neutron-kubeconfig
