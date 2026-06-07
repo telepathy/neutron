@@ -4,146 +4,160 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>neutron</title>
+    <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        html { font-size: 15px; }
+        html { font-size: 10px; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            color: #1a1a1a;
+            font-family: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            font-size: 1.6rem;
+            color: #606c76;
             background: #fff;
             line-height: 1.6;
             min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
         }
-        a { color: #2563eb; text-decoration: none; }
-        a:hover { text-decoration: underline; }
+        h1, h2, h3, h4, h5, h6 { color: #222; font-weight: 300; margin-bottom: 1rem; }
+        h1 { font-size: 3.2rem; }
+        h2 { font-size: 2.8rem; }
+        h3 { font-size: 2.4rem; }
+        h4 { font-size: 2rem; }
+        strong, b { color: #222; font-weight: 700; }
+        a { color: #9b4dca; text-decoration: none; }
+        a:hover { color: #7b2fa0; text-decoration: underline; }
 
         /* --- Nav --- */
         nav {
-            background: #111827;
+            background: #f4f5f6;
             padding: 0 32px;
             display: flex;
             align-items: center;
-            height: 52px;
+            height: 54px;
             position: sticky;
             top: 0;
             z-index: 100;
+            border-bottom: 1px solid #d1d1d1;
         }
         nav .brand {
             font-weight: 700;
-            font-size: 1.15rem;
-            color: #fff;
+            font-size: 1.8rem;
+            color: #606c76;
             text-decoration: none;
-            letter-spacing: .5px;
+            letter-spacing: .3px;
             margin-right: 36px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
-        nav .brand:hover { color: #60a5fa; text-decoration: none; }
+        nav .brand:hover { color: #9b4dca; text-decoration: none; }
+        nav .logo { width: 28px; height: 28px; }
         nav a {
-            color: #9ca3af;
-            font-size: .9rem;
-            font-weight: 500;
+            color: #606c76;
+            font-size: 1.4rem;
+            font-weight: 600;
             margin-right: 24px;
             text-decoration: none;
             transition: color .15s;
         }
-        nav a:hover { color: #fff; text-decoration: none; }
+        nav a:hover { color: #9b4dca; text-decoration: none; }
 
         /* --- Layout --- */
         .container { max-width: 960px; margin: 0 auto; padding: 32px 24px; }
 
         /* --- Hero --- */
-        .hero { text-align: center; padding: 64px 0 40px; }
-        .hero h1 { font-size: 3rem; font-weight: 800; color: #111827; letter-spacing: -1px; }
-        .hero p { font-size: 1.15rem; color: #6b7280; margin-top: 8px; }
+        .hero { text-align: center; padding: 80px 0 40px; }
+        .hero .hero-logo { width: 80px; height: 80px; margin-bottom: 16px; }
+        .hero h1 { font-size: 4.8rem; font-weight: 300; color: #222; letter-spacing: -1px; margin-bottom: .4rem; }
+        .hero p { font-size: 1.8rem; color: #999; margin-top: 0; }
         .arch-banner { background: #f0fdf4; padding: 24px 0; text-align: center; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; }
         .arch-banner img { max-width: 480px; width: 60%; height: auto; }
 
         /* --- Steps --- */
-        .steps-title { text-align: center; font-size: 1.3rem; font-weight: 600; color: #374151; margin: 48px 0 32px; }
+        .steps-title { text-align: center; font-size: 2rem; font-weight: 300; color: #222; margin: 48px 0 32px; }
         .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; margin-bottom: 64px; }
         .step { text-align: center; }
-        .step-num { font-size: 2.4rem; font-weight: 800; color: #2563eb; margin-bottom: 12px; }
-        .step p { color: #4b5563; font-size: .95rem; margin-top: 6px; }
+        .step-num { font-size: 3.2rem; font-weight: 300; color: #9b4dca; margin-bottom: 12px; }
+        .step p { color: #606c76; font-size: 1.4rem; margin-top: 6px; }
         .step pre {
             text-align: left; background: #f9fafb; border: 1px solid #e5e7eb;
-            border-radius: 8px; padding: 16px; font-size: .82rem; margin-top: 12px;
+            border-radius: 4px; padding: 16px; font-size: 1.3rem; margin-top: 12px;
             overflow-x: auto; line-height: 1.5;
         }
 
         /* --- Footer --- */
-        .footer { text-align: center; padding: 32px 0; color: #9ca3af; font-size: .85rem; border-top: 1px solid #f3f4f6; margin-top: 32px; }
+        .footer { text-align: center; padding: 32px 0; color: #999; font-size: 1.3rem; border-top: 1px solid #f3f4f6; margin-top: 32px; }
 
         /* --- Card --- */
         .card {
-            background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
-            padding: 28px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,.04);
+            background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;
+            padding: 24px; margin-bottom: 24px;
         }
-        .card h3 { font-size: 1.15rem; font-weight: 700; color: #111827; margin-bottom: 16px; }
 
         /* --- Meta rows --- */
         .meta { margin-bottom: 20px; }
-        .meta div { color: #4b5563; font-size: .95rem; margin-bottom: 4px; }
-        .meta b { color: #111827; }
+        .meta div { color: #606c76; font-size: 1.4rem; margin-bottom: 4px; }
+        .meta b { color: #222; }
         .stat-row { display: flex; gap: 32px; margin: 16px 0; }
-        .stat { font-size: .9rem; color: #6b7280; }
-        .stat b { color: #111827; font-size: 1.05rem; }
+        .stat { font-size: 1.4rem; color: #606c76; }
+        .stat b { color: #222; font-size: 1.4rem; }
 
         /* --- Table --- */
         table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-        th { text-align: left; font-size: .8rem; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; padding: 10px 12px; border-bottom: 2px solid #e5e7eb; }
-        td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; font-size: .92rem; }
+        th { text-align: left; font-size: 1.3rem; font-weight: 600; color: #222; padding: 10px 12px; border-bottom: 2px solid #e5e7eb; }
+        td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; font-size: 1.4rem; color: #606c76; }
         tr:hover td { background: #f9fafb; }
-        td a { font-weight: 500; }
+        td a { font-weight: 600; }
 
         /* --- Form --- */
         .form-wrap { max-width: 480px; }
-        .form-wrap h3 { font-size: 1.3rem; font-weight: 700; margin-bottom: 24px; }
-        label { display: block; font-size: .85rem; font-weight: 600; color: #374151; margin-bottom: 6px; margin-top: 16px; }
+        .form-wrap h3 { margin-bottom: 24px; }
+        label { display: block; font-size: 1.3rem; font-weight: 600; color: #222; margin-bottom: 6px; margin-top: 16px; }
         label:first-child { margin-top: 0; }
         input[type="text"], select {
-            width: 100%; padding: 10px 12px; font-size: .95rem;
-            border: 1px solid #d1d5db; border-radius: 8px;
-            background: #fff; color: #111827;
+            width: 100%; padding: 10px 12px; font-size: 1.4rem;
+            border: 1px solid #d1d5db; border-radius: 4px;
+            background: #fff; color: #606c76;
             transition: border-color .15s;
         }
-        input[type="text"]:focus, select:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.1); }
-        input[type="text"]::placeholder { color: #9ca3af; }
+        input[type="text"]:focus, select:focus { outline: none; border-color: #9b4dca; box-shadow: 0 0 0 2px rgba(155,77,202,.15); }
+        input[type="text"]::placeholder { color: #999; }
 
         /* --- Buttons --- */
         .btn {
-            display: inline-block; padding: 10px 24px; font-size: .92rem; font-weight: 600;
-            border: none; border-radius: 8px; cursor: pointer;
-            transition: background .15s, box-shadow .15s;
+            display: inline-block; padding: 10px 24px; font-size: 1.4rem; font-weight: 600;
+            border: 1px solid #9b4dca; border-radius: 4px; cursor: pointer;
+            transition: background .15s;
         }
-        .btn-primary { background: #2563eb; color: #fff; margin-top: 24px; }
-        .btn-primary:hover { background: #1d4ed8; box-shadow: 0 2px 8px rgba(37,99,235,.25); }
-        .btn-outline { background: #fff; color: #374151; border: 1px solid #d1d5db; }
-        .btn-outline:hover { background: #f9fafb; border-color: #9ca3af; }
+        .btn-primary { background: #9b4dca; color: #fff; margin-top: 24px; }
+        .btn-primary:hover { background: #7b2fa0; }
+        .btn-outline { background: #fff; color: #606c76; border: 1px solid #d1d5db; }
+        .btn-outline:hover { background: #f9fafb; border-color: #9b4dca; color: #9b4dca; }
 
         /* --- Success message --- */
         .success-box {
             max-width: 520px; margin: 48px auto; text-align: center;
-            background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 32px;
+            background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; padding: 32px;
         }
-        .success-box h4 { color: #15803d; font-size: 1.15rem; margin-bottom: 12px; }
-        .success-box p { color: #374151; font-size: .95rem; margin-bottom: 8px; }
+        .success-box h4 { color: #15803d; margin-bottom: 12px; }
+        .success-box p { color: #606c76; font-size: 1.4rem; margin-bottom: 8px; }
         .webhook-url {
-            background: #fff; border: 1px solid #d1d5db; border-radius: 8px;
-            padding: 12px 16px; font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, monospace;
-            font-size: .88rem; margin: 16px 0; word-break: break-all; color: #111827;
+            background: #fff; border: 1px solid #d1d5db; border-radius: 4px;
+            padding: 12px 16px; font-family: "SF Mono", "Fira Code", Menlo, monospace;
+            font-size: 1.3rem; margin: 16px 0; word-break: break-all; color: #222;
         }
 
         /* --- External log link hint --- */
-        .log-hint { color: #6b7280; font-size: .82rem; margin: 12px 0 0; }
+        .log-hint { color: #999; font-size: 1.2rem; margin: 12px 0 0; }
 
         /* --- Page title --- */
-        .page-title { font-size: 1.3rem; font-weight: 700; color: #111827; margin-bottom: 24px; }
-        .page-title b { color: #2563eb; }
+        .page-title { font-size: 2.4rem; font-weight: 300; color: #222; margin-bottom: 24px; }
+        .page-title b { color: #9b4dca; font-weight: 700; }
 
         /* --- Responsive --- */
         @media (max-width: 640px) {
             .steps { grid-template-columns: 1fr; }
             .stat-row { flex-direction: column; gap: 8px; }
-            .hero h1 { font-size: 2.2rem; }
+            .hero h1 { font-size: 3.2rem; }
             nav { padding: 0 16px; }
             .container { padding: 24px 16px; }
         }
@@ -151,7 +165,7 @@
 </head>
 <body>
 <nav>
-    <a class="brand" href="#/">neutron</a>
+    <a class="brand" href="#/"><img src="/static/logo.svg" alt="neutron" class="logo">neutron</a>
     <a href="#/register">Register</a>
 </nav>
 <div id="app" class="container"></div>
@@ -223,6 +237,7 @@
     function renderHome() {
         app.innerHTML =
             '<div class="hero">' +
+                '<img src="/static/logo.svg" alt="neutron" class="hero-logo">' +
                 '<h1>neutron</h1>' +
                 '<p>a lightweight pipeline system based on kubernetes</p>' +
             '</div>' +
@@ -368,7 +383,7 @@
                 '</div>' +
                 (pods.length > 0 ?
                     '<table><thead><tr><th>Pod</th><th>Status</th></tr></thead><tbody>' + podsHtml + '</tbody></table>'
-                    : '<p style="color:#6b7280;margin-top:12px">No pods recorded.</p>') +
+                    : '<p style="color:#999;margin-top:12px">No pods recorded.</p>') +
                 (appConfig.logUrl ? '<p class="log-hint">Click pod name to view logs on external platform</p>' : '') +
             '</div>';
     }
@@ -404,7 +419,7 @@
                 '</div>' +
                 (items.length > 0 ?
                     '<table><thead><tr><th>Pod</th><th>Status</th></tr></thead><tbody>' + podsHtml + '</tbody></table>'
-                    : '<p style="color:#6b7280;margin-top:12px">No pods found.</p>') +
+                    : '<p style="color:#999;margin-top:12px">No pods found.</p>') +
                 (appConfig.logUrl ? '<p class="log-hint">Click pod name to view logs on external platform</p>' : '') +
             '</div>';
     }
