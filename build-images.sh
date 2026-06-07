@@ -7,8 +7,11 @@ BUILD_DIR="bin"
 mkdir -p "$BUILD_DIR"
 
 # Cross-compile for Linux arm64 (kind on Apple Silicon)
-echo "Building runner binary..."
+echo "Building gitlab-runner binary..."
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o "${BUILD_DIR}/neutron-gitlab-runner-linux" ./cmd/gitlab-runner
+
+echo "Building codeup-runner binary..."
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o "${BUILD_DIR}/neutron-codeup-runner-linux" ./cmd/codeup-runner
 
 echo "Building API server binary..."
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o "${BUILD_DIR}/neutron-api-linux" ./cmd/api

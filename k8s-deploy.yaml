@@ -46,6 +46,9 @@ stringData:
       GitLab:
         url: "http://gitlab.default.svc.cluster.local"
         token: "your-gitlab-token"
+      # Codeup:
+      #   url: "http://codeup.example.com"
+      #   token: "your-codeup-token"
     kubernetes:
       namespace: "default"
       git-private-key: "git-ssh-secret"

@@ -33,6 +33,7 @@ jobs:
         run: |
           go build -trimpath -ldflags="-s -w" -o neutron-api-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/api
           go build -trimpath -ldflags="-s -w" -o neutron-gitlab-runner-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/gitlab-runner
+          go build -trimpath -ldflags="-s -w" -o neutron-codeup-runner-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/codeup-runner
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -41,6 +42,7 @@ jobs:
           path: |
             neutron-api-${{ matrix.goos }}-${{ matrix.goarch }}
             neutron-gitlab-runner-${{ matrix.goos }}-${{ matrix.goarch }}
+            neutron-codeup-runner-${{ matrix.goos }}-${{ matrix.goarch }}
 
   release:
     needs: build
@@ -67,4 +69,5 @@ jobs:
           files: |
             dist/neutron-api-*
             dist/neutron-gitlab-runner-*
+            dist/neutron-codeup-runner-*
             dist/checksums-sha256.txt

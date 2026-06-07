@@ -1,2 +1,5 @@
 FROM busybox:latest
-COPY bin/neutron-gitlab-runner-linux /runner
+COPY bin/neutron-gitlab-runner-linux /runners/gitlab-runner
+COPY bin/neutron-codeup-runner-linux /runners/codeup-runner
+COPY runner-entrypoint.sh /runner
+RUN chmod +x /runner

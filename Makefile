@@ -1,4 +1,4 @@
-.PHONY: all clean pre_build api gitlab api-linux runner-linux docker-api docker-runner
+.PHONY: all clean pre_build api gitlab codeup api-linux gitlab-linux codeup-linux docker-api docker-runner
 
 BUILD_DIR=bin
 
@@ -13,17 +13,22 @@ api:
 gitlab:
 	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/neutron-gitlab-runner cmd/gitlab-runner/*.go
 	chmod a+x $(BUILD_DIR)/neutron-gitlab-runner
+codeup:
+	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/neutron-codeup-runner cmd/codeup-runner/*.go
+	chmod a+x $(BUILD_DIR)/neutron-codeup-runner
 
 # Linux cross-compile (for Docker images)
 api-linux:
 	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/neutron-api-linux cmd/api/main.go
-runner-linux:
+gitlab-linux:
 	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/neutron-gitlab-runner-linux cmd/gitlab-runner/*.go
+codeup-linux:
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/neutron-codeup-runner-linux cmd/codeup-runner/*.go
 
 # Docker images
 docker-api: api-linux
 	docker build -t neutron-api:local -f Dockerfile .
-docker-runner: runner-linux
+docker-runner: gitlab-linux codeup-linux
 	docker build -t neutron-runner:local -f Dockerfile.runner .
 
 # Load images into kind

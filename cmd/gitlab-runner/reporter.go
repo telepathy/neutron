@@ -19,16 +19,16 @@ type message struct {
 
 type GitlabReporter struct {
 	client    *http.Client
-	gitBase   model.RunnerConfig
+	config    model.RunnerConfig
 	url       string
 	targetUrl string
 }
 
 func NewGitlabReporter(c model.RunnerConfig) *GitlabReporter {
 	return &GitlabReporter{
-		gitBase:   c,
+		config:    c,
 		client:    &http.Client{Timeout: 10 * time.Second},
-		url:       fmt.Sprintf("%s/api/v4/projects/%s/statuses/%s", c.GitlabUrl, c.ProjectId, c.ReportSha),
+		url:       fmt.Sprintf("%s/api/v4/projects/%s/statuses/%s", c.CodebaseUrl, c.ProjectId, c.ReportSha),
 		targetUrl: c.PipelineUrl,
 	}
 }
@@ -62,7 +62,7 @@ func (r *GitlabReporter) Report(jobName string, stepName string, status model.St
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("PRIVATE-TOKEN", r.gitBase.GitlabToken)
+	req.Header.Set("PRIVATE-TOKEN", r.config.CodebaseToken)
 	resp, err := r.client.Do(req)
 	if err != nil {
 		log.Printf("Warning: failed to report pipeline status to gitlab: %v", err)

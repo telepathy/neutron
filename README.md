@@ -4,41 +4,42 @@
 
 ![Concept Arch](./cmd/api/static/arch.svg)
 
-Neutron is a lightweight CI/CD pipeline system built on Kubernetes. It consists of a stateless API server and a MySQL database. Code hosting platforms like GitLab send pipeline requests to the API server via webhooks. Neutron parses these requests, reads pipeline definitions from a `neutron.yaml` file in the repository, and creates Kubernetes Jobs to execute the pipeline steps. After a Job completes, the runner reports status (pending/running/success/fail) back to the codebase as commit statuses.
+Neutron is a lightweight CI/CD pipeline system built on Kubernetes. It consists of a stateless API server and a MySQL database. Code hosting platforms (GitLab, Codeup) send pipeline requests to the API server via webhooks. Neutron auto-detects the platform, parses these requests, reads pipeline definitions from a `neutron.yaml` file in the repository, and creates Kubernetes Jobs to execute the pipeline steps. GitLab status is reported via commit statuses; Codeup has no status API (logged as TODO).
 
 ## How it works
 
 1. A code event (push, tag, or merge request) triggers a webhook to Neutron's `/webhook/:id` endpoint
-2. The API server parses the webhook payload, determines the trigger type (MR / TAG / PUSH)
-3. Neutron fetches `neutron.yaml` from the Git repository via the GitLab API
+2. The API server auto-detects the platform (GitLab or Codeup via `X-Codeup-Event` header) and parses the webhook payload
+3. Neutron fetches `neutron.yaml` from the Git repository via the platform API
 4. For each job whose `trigger` list matches the current trigger type, a Kubernetes Job is created
 5. Each K8s Job has two init containers:
    - **checkout** — clones the repository using SSH
-   - **init** — copies the runner binary from the runner Docker image
-6. The main container runs the runner binary, which reads `neutron.yaml`, executes steps sequentially, and reports status to GitLab
+   - **init** — copies the platform-specific runner binary from the runner Docker image
+6. The main container runs the runner binary, which reads `neutron.yaml`, executes steps sequentially, and reports status (GitLab: commit statuses; Codeup: logs TODO)
 
 ## Prerequisites
 
 - Go 1.23+
 - MySQL
 - Kubernetes cluster with kubectl access
-- GitLab instance with API access token
+- GitLab and/or Codeup instance with API access token
 
 ## Quick start
 
 ### 1. Build
 
 ```bash
-# Build both Docker images (API server + runner) and load into kind
+# Build all Docker images (API server + runner) and load into kind
 make kind-load
 
 # Or build individually:
 make docker-api      # API server image
-make docker-runner   # Runner image
+make docker-runner   # Runner image (contains both gitlab-runner and codeup-runner)
 
 # Local binaries only (no Docker):
-make api             # macOS binary
-make gitlab          # macOS runner binary
+make api             # macOS API server
+make gitlab          # macOS GitLab runner
+make codeup          # macOS Codeup runner
 ```
 
 ### 2. Configure
@@ -59,8 +60,11 @@ codebase:
   GitLab:
     url: "https://gitlab.example.com"
     token: "your-gitlab-private-token"
+  # Codeup:
+  #   url: "https://codeup.example.com"
+  #   token: "your-codeup-token"
 
-# Optional: pod-side codebase addresses (if pods access GitLab differently than the API server)
+# Optional: pod-side codebase addresses (if pods access codebase differently than the API server)
 # pod_codebase:
 #   GitLab:
 #     url: "http://gitlab.default.svc.cluster.local"
@@ -127,6 +131,9 @@ codebase:
   GitLab:
     url: "https://gitlab.example.com"
     token: "your-gitlab-private-token"
+  # Codeup:
+  #   url: "https://codeup.example.com"
+  #   token: "your-codeup-token"
 
 kubernetes:
   kube-config: ""                               # leave empty for in-cluster, auto-detected via ServiceAccount
@@ -232,16 +239,23 @@ Each K8s Job creates three containers. The pipeline image (specified in `neutron
 Open `http://your-neutron-host/register` in a browser, or use the API:
 
 ```bash
-curl -X POST http://localhost:8888/register \
+curl -X POST http://localhost:8888/api/register \
   -d "webhookType=GitLab" \
   -d "repoUrl=git@gitlab.example.com:group/project.git"
+
+# For Codeup:
+curl -X POST http://localhost:8888/api/register \
+  -d "webhookType=Codeup" \
+  -d "repoUrl=ssh://git@codeup.example.com/group/project.git"
 ```
 
-The response includes the webhook URL to configure in GitLab (Settings → Webhooks):
+The response includes the webhook URL to configure in GitLab/Codeup:
 
 ```
 POST http://your-neutron-host/webhook/<uuid>
 ```
+
+Platform is auto-detected from webhook headers (`X-Codeup-Event` → Codeup, otherwise → GitLab).
 
 ## API endpoints
 
@@ -249,7 +263,7 @@ POST http://your-neutron-host/webhook/<uuid>
 |--------|------|-------------|
 | GET | `/api/config` | Runtime config (log URL template, namespace) |
 | POST | `/api/register` | Register a project, returns JSON with webhook URL |
-| POST | `/webhook/:id` | Receive webhook, create K8s Jobs |
+| POST | `/webhook/:id` | Receive webhook (GitLab/Codeup auto-detect), create K8s Jobs |
 | GET | `/api/status/:jobName` | Job/pod status (JSON, from DB or K8s API) |
 
 The frontend is a vanilla JS SPA served from `/` (hash-based routing: `#/register`, `#/status/:jobName`). Pod names on the status page link to an external log platform if `log_url` is configured.
@@ -268,16 +282,22 @@ cmd/
   api/              # API server (Gin framework)
     main.go
     static/         # embedded SPA (index.html) + CSS + architecture diagram
-  gitlab-runner/    # runner binary (runs inside K8s pods)
+  gitlab-runner/    # GitLab runner binary (runs inside K8s pods)
     main.go
     reporter.go     # reports status to GitLab commit statuses
+  codeup-runner/    # Codeup runner binary (runs inside K8s pods)
+    main.go
+    reporter.go     # no-op reporter (Codeup has no status API)
 internal/
   gitlab/
-    parser.go       # webhook parsing + neutron.yaml fetching
-    launcher.go     # K8s Job creation
+    parser.go       # GitLab webhook parsing + neutron.yaml fetching
+  codeup/
+    parser.go       # Codeup webhook parsing + neutron.yaml fetching
+  launcher/
+    launcher.go     # shared K8s Job creation (platform-agnostic)
   model/
     config.go       # application config struct
-    pipeline.go     # Pipeline/Job/Step models + interfaces
+    pipeline.go     # Pipeline/Job/Step/RunnerConfig models + interfaces
   service/
     runner.go       # step execution engine
   repo.go           # MySQL data access layer

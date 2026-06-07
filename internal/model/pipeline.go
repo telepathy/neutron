@@ -20,17 +20,17 @@ type Step struct {
 }
 
 type RunnerConfig struct {
-	GitlabToken   string
-	GitlabUrl     string
+	CodebaseToken string // codebase access token
+	CodebaseUrl   string // codebase API base URL
 	ProjectId     string
 	CommitSha     string
-	ReportSha     string
+	ReportSha     string // GitLab: commit SHA for status reporting; Codeup: unused
 	Trigger       string
 	JobName       string
 	GitRepoUrl    string
 	GitPrivateKey string
 	PipelineUrl   string
-	TargetBranch  string // MR 目标分支，用于合并测试
+	TargetBranch  string // MR target branch, GitLab only
 }
 
 type StepResult string

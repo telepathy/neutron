@@ -15,11 +15,15 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"net/http"
 	"neutron/internal"
+	"neutron/internal/codeup"
 	"neutron/internal/gitlab"
+	"neutron/internal/launcher"
 	"neutron/internal/model"
+	v1 "k8s.io/api/core/v1"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -148,10 +152,23 @@ func main() {
 			c.JSON(http.StatusNotFound, gin.H{"error": "webhook not found"})
 			return
 		}
+
+		// auto-detect platform: X-Codeup-Event header present → Codeup, otherwise use registered type
+		platform := webhookConfig.WebhookType
+		if c.GetHeader("X-Codeup-Event") != "" {
+			platform = "Codeup"
+		}
+
 		var pipeline model.Pipeline
+		var pTrigger string
+		var pCodeSha string
+		var pReportSha string
+		var pTargetBranch string
+		var pProjectId int
 		var err error
 		var jobs []string
-		switch webhookConfig.WebhookType {
+
+		switch platform {
 		case "GitLab":
 			p, parseErr := gitlab.NewGitLabParser(c.Request.Body, config.BaseConfig["GitLab"].Url, config.BaseConfig["GitLab"].Token)
 			if parseErr != nil {
@@ -163,52 +180,96 @@ func main() {
 				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to parse pipeline: %v", err)})
 				return
 			}
-			for jobName, job := range pipeline.Jobs {
-				if !isValidTrigger(p.Trigger, job.Trigger) {
-					continue
-				}
-				podGitlab := config.BaseConfig["GitLab"]
-				if pod, ok := config.PodCodeBase["GitLab"]; ok {
-					podGitlab = pod
-				}
-				runnerConfig := model.RunnerConfig{
-					GitlabToken:   podGitlab.Token,
-					GitlabUrl:     podGitlab.Url,
-					ProjectId:     strconv.Itoa(p.Request.Project.Id),
-					CommitSha:     p.CodeSha,
-					ReportSha:     p.ReportSha,
-					JobName:       jobName,
-					Trigger:       p.Trigger,
-					GitRepoUrl:    webhookConfig.RepoUrl,
-					GitPrivateKey: "/etc/ssh/id_rsa",
-					TargetBranch:  p.TargetBranch,
-				}
-				l := gitlab.NewGitLabLauncher(
-					config.Kubernetes.Namespace,
-					runnerConfig,
-					config.Kubernetes.InitImage,
-					job.Image,
-					config.Kubernetes.GitPrivateKey,
-				)
-				jobClient := clientSet.BatchV1().Jobs(config.Kubernetes.Namespace)
-				neutronHost := fmt.Sprintf("%s:%d", config.Host, config.Port)
-				createdJob, err := jobClient.Create(context.Background(), l.CreateJob(neutronHost), metav1.CreateOptions{})
-				if err != nil {
-					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-					return
-				}
-				err = repo.AddJob(internal.PipelineJob{
-					ProjectId: id,
-					Name:      createdJob.Name,
-					Status:    "",
-				})
-				if err != nil {
-					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-					return
-				}
-				jobs = append(jobs, createdJob.Name)
+			pTrigger = p.Trigger
+			pCodeSha = p.CodeSha
+			pReportSha = p.ReportSha
+			pTargetBranch = p.TargetBranch
+			pProjectId = p.Request.Project.Id
+		case "Codeup":
+			codeupCfg, ok := config.BaseConfig["Codeup"]
+			if !ok {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Codeup codebase not configured"})
+				return
 			}
+			p, parseErr := codeup.NewCodeupParser(c.Request.Body, codeupCfg.Url, codeupCfg.Token)
+			if parseErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": parseErr.Error()})
+				return
+			}
+			pipeline, err = p.Parse()
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to parse pipeline: %v", err)})
+				return
+			}
+			pTrigger = p.Trigger
+			pCodeSha = p.CodeSha
+			pProjectId = p.Request.Project.Id
+			if pProjectId == 0 {
+				pProjectId = p.Request.ProjectId
+			}
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported platform: %s", platform)})
+			return
 		}
+
+		for jobName, job := range pipeline.Jobs {
+			if !isValidTrigger(pTrigger, job.Trigger) {
+				continue
+			}
+
+			// resolve codebase config (pod override if available)
+			baseCfg := config.BaseConfig[platform]
+			if pod, ok := config.PodCodeBase[platform]; ok {
+				baseCfg = pod
+			}
+
+			runnerConfig := model.RunnerConfig{
+				CodebaseToken: baseCfg.Token,
+				CodebaseUrl:   baseCfg.Url,
+				ProjectId:     strconv.Itoa(pProjectId),
+				CommitSha:     pCodeSha,
+				ReportSha:     pReportSha,
+				JobName:       jobName,
+				Trigger:       pTrigger,
+				GitRepoUrl:    webhookConfig.RepoUrl,
+				GitPrivateKey: "/etc/ssh/id_rsa",
+				TargetBranch:  pTargetBranch,
+			}
+
+			// platform-specific extra env vars
+			var extraEnv []v1.EnvVar
+			extraEnv = append(extraEnv, v1.EnvVar{Name: "RUNNER_PLATFORM", Value: strings.ToLower(platform)})
+			if platform == "GitLab" && pTargetBranch != "" {
+				extraEnv = append(extraEnv, v1.EnvVar{Name: "TARGET_BRANCH", Value: pTargetBranch})
+			}
+
+			l := launcher.NewLauncher(
+				config.Kubernetes.Namespace,
+				runnerConfig,
+				config.Kubernetes.InitImage,
+				job.Image,
+				config.Kubernetes.GitPrivateKey,
+				extraEnv...,
+			)
+			jobClient := clientSet.BatchV1().Jobs(config.Kubernetes.Namespace)
+			neutronHost := fmt.Sprintf("%s:%d", config.Host, config.Port)
+			createdJob, err := jobClient.Create(context.Background(), l.CreateJob(neutronHost), metav1.CreateOptions{})
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			err = repo.AddJob(internal.PipelineJob{
+				ProjectId: id,
+				Name:      createdJob.Name,
+				Status:    "",
+			})
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			jobs = append(jobs, createdJob.Name)
+		}
+
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
