@@ -8,17 +8,17 @@ pre_build:
 
 # macOS builds
 api:
-	CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BUILD_DIR)/neutron-api cmd/api/main.go
+	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/neutron-api cmd/api/main.go
 	chmod a+x $(BUILD_DIR)/neutron-api
 gitlab:
-	CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BUILD_DIR)/neutron-gitlab-runner cmd/gitlab-runner/*.go
+	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/neutron-gitlab-runner cmd/gitlab-runner/*.go
 	chmod a+x $(BUILD_DIR)/neutron-gitlab-runner
 
 # Linux cross-compile (for Docker images)
 api-linux:
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BUILD_DIR)/neutron-api-linux cmd/api/main.go
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/neutron-api-linux cmd/api/main.go
 runner-linux:
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BUILD_DIR)/neutron-gitlab-runner-linux cmd/gitlab-runner/*.go
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/neutron-gitlab-runner-linux cmd/gitlab-runner/*.go
 
 # Docker images
 docker-api: api-linux

@@ -6,32 +6,26 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 	"gopkg.in/yaml.v3"
-	"html/template"
 	"io/fs"
 	"log"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"net/http"
 	"neutron/internal"
 	"neutron/internal/gitlab"
 	"neutron/internal/model"
-	"os/signal"
-	"syscall"
-	"neutron/internal/service"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 )
 
 //go:embed static/*
 var staticFs embed.FS
-
-//go:embed templates/*
-var htmlFs embed.FS
 
 func main() {
 	var config model.Config
@@ -48,9 +42,12 @@ func main() {
 	}
 	repo := internal.NewRepository(config)
 
-	kubeConfig, err := clientcmd.BuildConfigFromFlags("", config.Kubernetes.KubeConfig)
+	kubeConfig, err := rest.InClusterConfig()
 	if err != nil {
-		panic(err)
+		kubeConfig, err = clientcmd.BuildConfigFromFlags("", config.Kubernetes.KubeConfig)
+		if err != nil {
+			log.Fatalf("cannot build kube config: %v", err)
+		}
 	}
 	clientSet, err := kubernetes.NewForConfig(kubeConfig)
 	if err != nil {
@@ -64,20 +61,27 @@ func main() {
 		log.Fatalf("cannot load embedded static files: %v", err)
 	}
 	r.StaticFS("/static", http.FS(subStaticFs))
-	tmpl := template.Must(template.ParseFS(htmlFs, "templates/*"))
-	r.SetHTMLTemplate(tmpl)
 
-	r.GET("/", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "index.html", gin.H{
-			"Message": "Hello!",
+	// SPA: serve index.html for all non-API, non-static routes
+	r.NoRoute(func(c *gin.Context) {
+		data, err := staticFs.ReadFile("static/index.html")
+		if err != nil {
+			c.String(http.StatusInternalServerError, "SPA not found")
+			return
+		}
+		c.Data(http.StatusOK, "text/html; charset=utf-8", data)
+	})
+
+	// --- API endpoints ---
+
+	r.GET("/api/config", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"logUrl":     config.LogUrl,
+			"namespace":  config.Kubernetes.Namespace,
 		})
 	})
 
-	r.GET("/register", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "register.html", gin.H{})
-	})
-
-	r.POST("/register", func(c *gin.Context) {
+	r.POST("/api/register", func(c *gin.Context) {
 		p := internal.PipelineProject{
 			Id:          uuid.New().String(),
 			WebhookType: c.PostForm("webhookType"),
@@ -85,41 +89,56 @@ func main() {
 		}
 		err := repo.AddWebhookConfig(p)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-		} else {
-			fullHost := config.Host
-			if config.Port != 80 && config.Port != 443 {
-				fullHost = fmt.Sprintf("%s:%d", fullHost, config.Port)
-			}
-			c.HTML(http.StatusOK, "register_info.html", gin.H{"pipeline": p, "host": fullHost})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
+		fullHost := config.Host
+		if config.Port != 80 && config.Port != 443 {
+			fullHost = fmt.Sprintf("%s:%d", fullHost, config.Port)
+		}
+		webhookUrl := fmt.Sprintf("%s/webhook/%s", fullHost, p.Id)
+		c.JSON(http.StatusOK, gin.H{
+			"id":          p.Id,
+			"webhookType": p.WebhookType,
+			"repoUrl":     p.RepoUrl,
+			"webhookUrl":  webhookUrl,
+		})
 	})
 
-	looter := service.NewLooter(config.Kubernetes.Namespace, repo, clientSet)
-
-	r.GET("/loot", func(c *gin.Context) {
-		err := looter.FetchCompletedJobLog()
+	r.GET("/api/status/:jobName", func(c *gin.Context) {
+		jobName := c.Param("jobName")
+		status, err := repo.GetJobStatus(jobName)
+		if err == nil {
+			c.JSON(http.StatusOK, gin.H{
+				"jobName": jobName,
+				"status":  status,
+				"source":  "database",
+			})
+			return
+		}
+		jobClient := clientSet.BatchV1().Jobs(config.Kubernetes.Namespace)
+		job, err := jobClient.Get(context.Background(), jobName, metav1.GetOptions{})
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-		} else {
-			c.JSON(http.StatusOK, gin.H{"status": "ok"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
 		}
-	})
-
-	r.GET("/log/:podName", func(c *gin.Context) {
-		podName := c.Param("podName")
-		log, _ := repo.GetLogs(podName)
-		if log != "" {
-			c.HTML(http.StatusOK, "log_solid.html", gin.H{
-				"PodName": podName,
-				"Log":     log,
-			})
-		} else {
-			c.HTML(http.StatusOK, "log.html", gin.H{
-				"PodName": c.Param("podName"),
-			})
+		podClient := clientSet.CoreV1().Pods(config.Kubernetes.Namespace)
+		selector, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+			MatchLabels: job.Spec.Selector.MatchLabels,
+		})
+		pods, err := podClient.List(context.Background(), metav1.ListOptions{
+			LabelSelector: selector.String(),
+		})
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
 		}
-
+		c.JSON(http.StatusOK, gin.H{
+			"jobName": jobName,
+			"job":     job,
+			"pods":    pods,
+			"source":  "kubernetes",
+		})
 	})
 
 	r.POST("/webhook/:id", func(c *gin.Context) {
@@ -148,7 +167,6 @@ func main() {
 				if !isValidTrigger(p.Trigger, job.Trigger) {
 					continue
 				}
-					// Pod 内 runner 用 PodCodeBase 地址（如有），否则回退 BaseConfig
 				podGitlab := config.BaseConfig["GitLab"]
 				if pod, ok := config.PodCodeBase["GitLab"]; ok {
 					podGitlab = pod
@@ -166,7 +184,6 @@ func main() {
 					TargetBranch:  p.TargetBranch,
 				}
 				l := gitlab.NewGitLabLauncher(
-					config.Kubernetes.KubeConfig,
 					config.Kubernetes.Namespace,
 					runnerConfig,
 					config.Kubernetes.InitImage,
@@ -197,61 +214,6 @@ func main() {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "pipeline": pipeline, "jobs": jobs})
-	})
-
-	r.GET("/status/:jobName", func(c *gin.Context) {
-		jobName := c.Param("jobName")
-		status, err := repo.GetJobStatus(jobName)
-		if err == nil {
-			pods, _ := repo.GetPodStatus(jobName)
-			c.HTML(http.StatusOK, "status_solid.html", gin.H{"jobName": jobName, "status": status, "pods": pods})
-		} else {
-			jobClient := clientSet.BatchV1().Jobs(config.Kubernetes.Namespace)
-			job, err := jobClient.Get(context.Background(), jobName, metav1.GetOptions{})
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			}
-			podClient := clientSet.CoreV1().Pods(config.Kubernetes.Namespace)
-			selector, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-				MatchLabels: job.Spec.Selector.MatchLabels,
-			})
-			pods, err := podClient.List(context.Background(), metav1.ListOptions{
-				LabelSelector: selector.String(),
-			})
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			}
-			c.HTML(http.StatusOK, "status.html", gin.H{"job": job, "pods": pods})
-		}
-	})
-
-	r.GET("/ws/logs/:podName", func(c *gin.Context) {
-		podName := c.Param("podName")
-		u := websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool { return true },
-		}
-		conn, err := u.Upgrade(c.Writer, c.Request, nil)
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		logStream, err := clientSet.CoreV1().Pods(config.Kubernetes.Namespace).GetLogs(podName, &corev1.PodLogOptions{Follow: true}).Stream(context.TODO())
-		if err != nil {
-			conn.Close()
-			return
-		}
-		defer logStream.Close()
-		buffer := make([]byte, 1024)
-		for {
-			n, err := logStream.Read(buffer)
-			if err != nil {
-				break
-			}
-			if err := conn.WriteMessage(websocket.TextMessage, buffer[:n]); err != nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
 	})
 
 	srv := &http.Server{

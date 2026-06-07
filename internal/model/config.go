@@ -5,6 +5,7 @@ type Config struct {
 	Port       int                 `yaml:"port"`
 	Database   string              `yaml:"database"`
 	Salt       string              `yaml:"salt"`
+	LogUrl     string              `yaml:"log_url,omitempty"` // 日志平台链接模板，支持 {namespace} 和 {podName} 占位符
 	BaseConfig map[string]CodeBase `yaml:"codebase"`
 	// PodCodeBase 覆盖 K8s Pod 内 runner 访问 codebase 的地址（当 Pod 网络与宿主机不同时使用）
 	PodCodeBase map[string]CodeBase `yaml:"pod_codebase,omitempty"`

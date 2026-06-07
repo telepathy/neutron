@@ -22,13 +22,6 @@ type PipelineJob struct {
 	Status    string
 }
 
-type PipelineLog struct {
-	Id      int
-	JobName string
-	PodName string
-	Log     string
-}
-
 type JobStatus struct {
 	WebhookType string `json:"webhook_type"`
 	RepoUrl     string `json:"repo_url"`
@@ -37,11 +30,6 @@ type JobStatus struct {
 	Active      int    `json:"active"`
 	Succeeded   int    `json:"succeeded"`
 	Failed      int    `json:"failed"`
-}
-
-type PodStatus struct {
-	Name   string
-	Status string
 }
 
 type Repository struct {
@@ -118,40 +106,3 @@ func (r *Repository) GetJobStatus(jobName string) (JobStatus, error) {
 	return result, nil
 }
 
-func (r *Repository) AddPodLog(jobName string, podName string, content string, status string) error {
-	_, err := r.db.Exec("INSERT INTO log (job_name, pod_name, content, status) VALUES(?, ?, ?, ?)", jobName, podName, content, status)
-	return err
-}
-
-func (r *Repository) GetPodStatus(jobName string) ([]PodStatus, error) {
-	row, err := r.db.Query("SELECT pod_name, status FROM log WHERE job_name=?", jobName)
-	if err != nil {
-		return nil, err
-	}
-	defer row.Close()
-	var podStatus []PodStatus
-	for row.Next() {
-		var p PodStatus
-		if err := row.Scan(&p.Name, &p.Status); err != nil {
-			return nil, err
-		}
-		podStatus = append(podStatus, p)
-	}
-	return podStatus, nil
-}
-
-func (r *Repository) GetLogs(podName string) (string, error) {
-	row, err := r.db.Query("SELECT content FROM log WHERE pod_name=?", podName)
-	if err != nil {
-		return "", err
-	}
-	defer row.Close()
-	var content string
-	for row.Next() {
-		if err := row.Scan(&content); err != nil {
-			return "", err
-		}
-		break
-	}
-	return content, nil
-}

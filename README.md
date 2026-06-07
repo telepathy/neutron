@@ -16,7 +16,6 @@ Neutron is a lightweight CI/CD pipeline system built on Kubernetes. It consists 
    - **checkout** — clones the repository using SSH
    - **init** — copies the runner binary from the runner Docker image
 6. The main container runs the runner binary, which reads `neutron.yaml`, executes steps sequentially, and reports status to GitLab
-7. The Looter (`/loot`) collects logs from completed pods into MySQL
 
 ## Prerequisites
 
@@ -52,6 +51,10 @@ port: 8888
 database: "user:password@tcp(127.0.0.1:3306)/neutron?charset=utf8mb4&parseTime=True&loc=Local"
 salt: "your-random-salt"
 
+# Optional: external log platform URL template
+# {namespace} and {podName} are replaced at runtime
+# log_url: "https://log.internal.com/view?namespace={namespace}&pod={podName}"
+
 codebase:
   GitLab:
     url: "https://gitlab.example.com"
@@ -64,7 +67,7 @@ codebase:
 #     token: "your-gitlab-private-token"
 
 kubernetes:
-  kube-config: "/path/to/.kube/config"
+  kube-config: "/path/to/.kube/config"  # optional when deploying in-cluster (auto-detected via ServiceAccount)
   namespace: "default"
   git-private-key: "git-ssh-secret"     # K8s secret name containing SSH key for git clone
   init-image: "neutron-runner:latest"   # runner image, init container copies runner binary from it
@@ -80,6 +83,82 @@ mysql -u user -p < dds.sql
 
 ```bash
 ./bin/neutron-api
+```
+
+## Deploy to Kubernetes
+
+### Build and push images
+
+```bash
+# Build
+make docker-api
+make docker-runner
+
+# Tag and push to your registry
+docker tag neutron-api:local <registry>/neutron-api:v0.0.1
+docker tag neutron-runner:local <registry>/neutron-runner:v0.0.1
+docker push <registry>/neutron-api:v0.0.1
+docker push <registry>/neutron-runner:v0.0.1
+```
+
+### RBAC
+
+Neutron uses a dedicated ServiceAccount to create Jobs and query Pods. `k8s-deploy.yaml` includes all RBAC resources:
+
+| Resource | Purpose |
+|----------|---------|
+| `ServiceAccount/neutron` | Identity for the API server pod |
+| `ClusterRole/neutron` | `jobs` (create/get/list/delete), `pods` + `pods/log` (get/list) |
+| `ClusterRoleBinding/neutron` | Binds the role to the service account |
+
+### Configure for in-cluster deployment
+
+When running inside K8s, Neutron automatically detects the in-cluster environment and uses the ServiceAccount token. The `kube-config` field is ignored.
+
+```yaml
+host: "http://your-neutron-external-address"  # must be reachable from GitLab for webhook callbacks
+port: 8888
+database: "user:password@tcp(<mysql-host>:3306)/neutron?charset=utf8mb4&parseTime=True&loc=Local"
+salt: "your-random-salt"
+
+log_url: "https://log.internal.com/view?namespace={namespace}&pod={podName}"
+
+codebase:
+  GitLab:
+    url: "https://gitlab.example.com"
+    token: "your-gitlab-private-token"
+
+kubernetes:
+  kube-config: ""                               # leave empty for in-cluster, auto-detected via ServiceAccount
+  namespace: "default"
+  git-private-key: "git-ssh-secret"
+  init-image: "<registry>/neutron-runner:v0.0.1"
+```
+
+### Create secrets and deploy
+
+```bash
+# SSH key for git clone
+kubectl create secret generic git-ssh-secret --from-file=id_rsa=$HOME/.ssh/id_ed25519
+
+# Update k8s-deploy.yaml image fields, then apply
+kubectl apply -f k8s-deploy.yaml
+
+# Verify
+kubectl get pods -l app=neutron-api
+kubectl logs -l app=neutron-api
+```
+
+### Access
+
+The pod does not use `hostNetwork`. Expose the service via one of:
+
+```bash
+# Port forward (development)
+kubectl port-forward deployment/neutron-api 8888:8888
+
+# NodePort (add to k8s-deploy.yaml)
+# LoadBalancer / Ingress (production)
 ```
 
 ## Pipeline configuration
@@ -168,22 +247,19 @@ POST http://your-neutron-host/webhook/<uuid>
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/` | Web UI — index page |
-| GET | `/register` | Web UI — register form |
-| POST | `/register` | Register a project, returns webhook URL |
+| GET | `/api/config` | Runtime config (log URL template, namespace) |
+| POST | `/api/register` | Register a project, returns JSON with webhook URL |
 | POST | `/webhook/:id` | Receive webhook, create K8s Jobs |
-| GET | `/status/:jobName` | View job and pod status |
-| GET | `/log/:podName` | View pod log (from DB or live via K8s API) |
-| GET | `/ws/logs/:podName` | WebSocket live log streaming |
-| GET | `/loot` | Collect logs from completed K8s jobs into MySQL |
+| GET | `/api/status/:jobName` | Job/pod status (JSON, from DB or K8s API) |
+
+The frontend is a vanilla JS SPA served from `/` (hash-based routing: `#/register`, `#/status/:jobName`). Pod names on the status page link to an external log platform if `log_url` is configured.
 
 ## Database schema
 
-Three tables (`dds.sql`):
+Two tables (`dds.sql`):
 
 - **project** — registered projects (`id`, `webhook_type`, `repo_url`)
 - **job** — K8s job metadata (`id`, `project_id`, `name`, `status` as JSON)
-- **log** — pod execution logs (`id`, `job_name`, `pod_name`, `status`, `content`)
 
 ## Project structure
 
@@ -191,8 +267,7 @@ Three tables (`dds.sql`):
 cmd/
   api/              # API server (Gin framework)
     main.go
-    static/         # embedded CSS + architecture diagram
-    templates/      # embedded HTML templates
+    static/         # embedded SPA (index.html) + CSS + architecture diagram
   gitlab-runner/    # runner binary (runs inside K8s pods)
     main.go
     reporter.go     # reports status to GitLab commit statuses
@@ -205,6 +280,5 @@ internal/
     pipeline.go     # Pipeline/Job/Step models + interfaces
   service/
     runner.go       # step execution engine
-    looter.go       # log collection from completed pods
   repo.go           # MySQL data access layer
 ```

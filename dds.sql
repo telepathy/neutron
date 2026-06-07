@@ -9,10 +9,3 @@ create table if not exists job(
     name varchar(128) not null,
     status varchar(512) not null
 );
-create table if not exists log(
-    id int primary key auto_increment,
-    job_name varchar(128) not null,
-    pod_name varchar(128) not null,
-    status varchar(32) not null,
-    content longtext
-)

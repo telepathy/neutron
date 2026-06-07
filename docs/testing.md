@@ -357,9 +357,6 @@ kubectl logs -l app=neutron-api
 # 查看 GitLab webhook 投递记录
 # GitLab → Project → Settings → Webhooks → 点击 hook 查看 Recent deliveries
 
-# 手动触发 loot（收集日志到 MySQL）
-curl http://localhost:8888/loot
-
-# 查看 Job 状态页面
-curl http://localhost:8888/status/<job-name>
+# 查看 Job 状态（JSON API）
+curl http://localhost:8888/api/status/<job-name>
 ```

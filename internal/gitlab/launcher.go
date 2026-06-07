@@ -11,7 +11,6 @@ import (
 )
 
 type Launcher struct {
-	KubeConfigPath string
 	Namespace      string
 	RunnerConfig   model.RunnerConfig
 	InitImage      string
@@ -19,9 +18,8 @@ type Launcher struct {
 	SshKeyName     string
 }
 
-func NewGitLabLauncher(kubeConfigPath string, namespace string, runnerConfig model.RunnerConfig, initImage string, baseImage string, keyName string) *Launcher {
+func NewGitLabLauncher(namespace string, runnerConfig model.RunnerConfig, initImage string, baseImage string, keyName string) *Launcher {
 	return &Launcher{
-		KubeConfigPath: kubeConfigPath,
 		Namespace:      namespace,
 		RunnerConfig:   runnerConfig,
 		InitImage:      initImage,
