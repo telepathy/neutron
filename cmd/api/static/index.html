@@ -389,16 +389,16 @@
     }
 
     function renderStatusLive(job, podsData) {
-        var ann = job.ObjectMeta && job.ObjectMeta.Annotations ? job.ObjectMeta.Annotations : {};
-        var st = job.Status || {};
-        var items = podsData && podsData.Items ? podsData.Items : [];
+        var ann = job.metadata && job.metadata.annotations ? job.metadata.annotations : {};
+        var st = job.status || {};
+        var items = podsData && podsData.items ? podsData.items : [];
 
         var podsHtml = '';
         for (var i = 0; i < items.length; i++) {
             var pod = items[i];
-            var name = pod.ObjectMeta ? pod.ObjectMeta.Name : '';
-            var uid = pod.ObjectMeta ? pod.ObjectMeta.UID : '';
-            var phase = pod.Status ? pod.Status.Phase : '';
+            var name = pod.metadata ? pod.metadata.name : '';
+            var uid = pod.metadata ? pod.metadata.uid : '';
+            var phase = pod.status ? pod.status.phase : '';
             if (appConfig.logUrl) {
                 podsHtml += '<tr><td><a href="javascript:void(0)" onclick="openPodLog(\'' + escAttr(name) + '\',\'' + escAttr(uid) + '\')">' + escHtml(name) + '</a></td><td>' + escHtml(phase) + '</td></tr>';
             } else {
@@ -407,7 +407,7 @@
         }
 
         app.innerHTML =
-            '<p class="page-title">Job &mdash; <b>' + escHtml(job.ObjectMeta ? job.ObjectMeta.Name : '') + '</b></p>' +
+            '<p class="page-title">Job &mdash; <b>' + escHtml(job.metadata ? job.metadata.name : '') + '</b></p>' +
             '<div class="card">' +
                 '<div class="meta">' +
                     '<div>A <b>' + escHtml(ann.sourceType || '') + '</b> &rarr; <b>' + escHtml(ann.triggerType || '') + '</b> pipeline</div>' +
