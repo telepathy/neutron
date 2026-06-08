@@ -53,6 +53,7 @@ stringData:
       namespace: "default"
       git-private-key: "git-ssh-secret"
       init-image: "neutron-runner:local"
+      checkout-image: "neutron-checkout:local"
 ---
 apiVersion: v1
 kind: Service

@@ -14,16 +14,18 @@ type Launcher struct {
 	Namespace      string
 	RunnerConfig   model.RunnerConfig
 	InitImage      string
+	CheckoutImage  string
 	PipelineImage  string
 	SshKeyName     string
 	ExtraEnv       []v1.EnvVar // platform-specific env vars (e.g. TARGET_BRANCH for GitLab MR)
 }
 
-func NewLauncher(namespace string, runnerConfig model.RunnerConfig, initImage string, baseImage string, keyName string, extraEnv ...v1.EnvVar) *Launcher {
+func NewLauncher(namespace string, runnerConfig model.RunnerConfig, initImage string, checkoutImage string, baseImage string, keyName string, extraEnv ...v1.EnvVar) *Launcher {
 	return &Launcher{
 		Namespace:      namespace,
 		RunnerConfig:   runnerConfig,
 		InitImage:      initImage,
+		CheckoutImage:  checkoutImage,
 		PipelineImage:  baseImage,
 		SshKeyName:     keyName,
 		ExtraEnv:       extraEnv,
@@ -89,7 +91,7 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 					InitContainers: []v1.Container{
 						{
 							Name:  "checkout",
-							Image: l.PipelineImage,
+							Image: l.CheckoutImage,
 							Command: []string{
 								"/bin/sh",
 								"-c",

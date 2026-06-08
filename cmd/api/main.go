@@ -247,6 +247,7 @@ func main() {
 				config.Kubernetes.Namespace,
 				runnerConfig,
 				config.Kubernetes.InitImage,
+				config.Kubernetes.CheckoutImage,
 				job.Image,
 				config.Kubernetes.GitPrivateKey,
 				extraEnv...,

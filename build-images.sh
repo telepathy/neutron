@@ -19,6 +19,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o "${
 echo "Building Docker images..."
 docker build -t "neutron-api:${TAG}" -f Dockerfile .
 docker build -t "neutron-runner:${TAG}" -f Dockerfile.runner .
+docker build -t "neutron-checkout:${TAG}" -f Dockerfile.checkout .
 
 echo "Done. Images:"
 docker images | grep "neutron-"

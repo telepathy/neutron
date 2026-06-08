@@ -1,4 +1,4 @@
-.PHONY: all clean pre_build api gitlab codeup api-linux gitlab-linux codeup-linux docker-api docker-runner
+.PHONY: all clean pre_build api gitlab codeup api-linux gitlab-linux codeup-linux docker-api docker-runner docker-checkout
 
 BUILD_DIR=bin
 
@@ -30,11 +30,14 @@ docker-api: api-linux
 	docker build -t neutron-api:local -f Dockerfile .
 docker-runner: gitlab-linux codeup-linux
 	docker build -t neutron-runner:local -f Dockerfile.runner .
+docker-checkout:
+	docker build -t neutron-checkout:local -f Dockerfile.checkout .
 
 # Load images into kind
-kind-load: docker-api docker-runner
+kind-load: docker-api docker-runner docker-checkout
 	kind load docker-image neutron-api:local --name neutron
 	kind load docker-image neutron-runner:local --name neutron
+	kind load docker-image neutron-checkout:local --name neutron
 
 clean:
 	rm -rf $(BUILD_DIR)/*

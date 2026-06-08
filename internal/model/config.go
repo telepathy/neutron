@@ -13,10 +13,11 @@ type Config struct {
 }
 
 type KubernetesConfig struct {
-	KubeConfig    string `yaml:"kube-config"`
-	Namespace     string `yaml:"namespace"`
-	GitPrivateKey string `yaml:"git-private-key"`
-	InitImage     string `yaml:"init-image"`
+	KubeConfig     string `yaml:"kube-config"`
+	Namespace      string `yaml:"namespace"`
+	GitPrivateKey  string `yaml:"git-private-key"`
+	InitImage      string `yaml:"init-image"`
+	CheckoutImage  string `yaml:"checkout-image"` // dedicated image for git checkout (must include git + ssh)
 }
 
 type CodeBase struct {

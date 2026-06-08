@@ -97,12 +97,15 @@ mysql -u user -p < dds.sql
 # Build
 make docker-api
 make docker-runner
+make docker-checkout
 
 # Tag and push to your registry
-docker tag neutron-api:local <registry>/neutron-api:v0.0.1
-docker tag neutron-runner:local <registry>/neutron-runner:v0.0.1
-docker push <registry>/neutron-api:v0.0.1
-docker push <registry>/neutron-runner:v0.0.1
+docker tag neutron-api:local <registry>/neutron-api:v0.0.2
+docker tag neutron-runner:local <registry>/neutron-runner:v0.0.2
+docker tag neutron-checkout:local <registry>/neutron-checkout:v0.0.2
+docker push <registry>/neutron-api:v0.0.2
+docker push <registry>/neutron-runner:v0.0.2
+docker push <registry>/neutron-checkout:v0.0.2
 ```
 
 ### RBAC
@@ -140,6 +143,7 @@ kubernetes:
   namespace: "default"
   git-private-key: "git-ssh-secret"
   init-image: "<registry>/neutron-runner:v0.0.1"
+  checkout-image: "<registry>/neutron-checkout:v0.0.1"
 ```
 
 ### Create secrets and deploy
@@ -210,29 +214,18 @@ Steps run sequentially. If a step fails, all subsequent steps are marked as fail
 
 ### Image requirements
 
-Each K8s Job creates three containers. The pipeline image (specified in `neutron.yaml`) is shared by the main container and the checkout init container, so it must include all tools needed for both.
+Each K8s Job creates three containers, each using a dedicated image:
 
-| Container | Purpose | Required tools | Configured in |
-|-----------|---------|---------------|---------------|
-| **checkout** (init) | Clone repo, merge source branch for MR | `git`, `ssh` client | Uses job's `image` |
-| **init** (init) | Copy runner binary from runner image | `cp` (busybox built-in) | `config.yaml` → `kubernetes.init-image` (runner image) |
-| **pipeline** (main) | Execute pipeline steps | `/bin/sh` + business dependencies | `neutron.yaml` → `image` |
+| Container | Purpose | Image | Configured in |
+|-----------|---------|-------|---------------|
+| **checkout** (init) | Clone repo, merge source branch for MR | `neutron-checkout` (built-in, includes git + ssh) | `config.yaml` → `kubernetes.checkout-image` |
+| **init** (init) | Copy runner binary to shared volume | `neutron-runner` (built-in, busybox + runner binaries) | `config.yaml` → `kubernetes.init-image` |
+| **pipeline** (main) | Execute pipeline steps | User-specified image from `neutron.yaml` | `neutron.yaml` → `image` |
 
-**Common pitfalls:**
+**Pipeline image requirements:**
 
-- Minimal images like `alpine:latest` do **not** include `git` or `ssh`. Use `alpine/git:latest` or install them in your image.
-- The checkout container reuses the job's `image`, so the image must have `git` and an SSH client for `git clone` to work.
-- Steps are executed via `sh -c "<cmd>"`, so shell features (pipes `|`, redirects `>`, chaining `&&`) are supported. The image must have `/bin/sh`.
-
-**Recommended base images:**
-
-| Use case | Image |
-|----------|-------|
-| General purpose with git | `alpine/git:latest` |
-| Node.js | `node:18-alpine` (includes git via apk) |
-| Go | `golang:1.23-alpine` (includes git) |
-| Python | `python:3.12-slim` (no git, install via apt) |
-| Runner init container | `neutron-runner:local` (built by `make docker-runner`) |
+- Steps are executed via `sh -c "<cmd>"`, so the image must have `/bin/sh`
+- No need to install `git` or `ssh` — checkout is handled by the dedicated checkout image
 
 ## Register a project
 
