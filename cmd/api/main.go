@@ -212,7 +212,7 @@ func main() {
 	r.GET("/api/status/:jobName", func(c *gin.Context) {
 		jobName := c.Param("jobName")
 		status, err := repo.GetJobStatus(jobName)
-		if err == nil {
+		if err == nil && (status.Active > 0 || status.Succeeded > 0 || status.Failed > 0) {
 			c.JSON(http.StatusOK, gin.H{
 				"jobName": jobName,
 				"status":  status,
@@ -237,6 +237,27 @@ func main() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+
+		// Derive status from K8s job and update database
+		ann := job.Annotations
+		k8sStatus := internal.JobStatus{
+			WebhookType: ann["sourceType"],
+			TriggerType: ann["triggerType"],
+			RepoUrl:     ann["gitPath"],
+			ProjectUrl:  ann["sourceLink"],
+		}
+		if job.Status.Active > 0 {
+			k8sStatus.Active = 1
+		}
+		if job.Status.Succeeded > 0 {
+			k8sStatus.Succeeded = 1
+		}
+		if job.Status.Failed > 0 {
+			k8sStatus.Failed = 1
+		}
+		// Update database with derived status
+		_ = repo.UpdateJobStatus(jobName, k8sStatus)
+
 		c.JSON(http.StatusOK, gin.H{
 			"jobName": jobName,
 			"job":     job,
