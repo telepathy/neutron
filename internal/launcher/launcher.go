@@ -60,7 +60,7 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 		{Name: "JOB_NAME", Value: l.RunnerConfig.JobName},
 		{Name: "GIT_REPO_URL", Value: l.RunnerConfig.GitRepoUrl},
 		{Name: "GIT_PRIVATE_KEY", Value: l.RunnerConfig.GitPrivateKey},
-		{Name: "PIPELINE_URL", Value: fmt.Sprintf("%s/status/neutron-%s-%s", neutronHost, l.RunnerConfig.JobName, ts)},
+		{Name: "PIPELINE_URL", Value: fmt.Sprintf("%s/#/status/neutron-%s-%s", neutronHost, l.RunnerConfig.JobName, ts)},
 	}
 	env = append(env, l.ExtraEnv...)
 

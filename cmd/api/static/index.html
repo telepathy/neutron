@@ -166,18 +166,20 @@
 <body>
 <nav>
     <a class="brand" href="#/"><img src="/static/logo.svg" alt="neutron" class="logo">neutron</a>
+    <a href="#/">Projects</a>
     <a href="#/register">Register</a>
 </nav>
 <div id="app" class="container"></div>
 <script>
 (function() {
     var app = document.getElementById('app');
-    var appConfig = { logUrl: '', namespace: 'default' };
+    var appConfig = { logUrl: '', namespace: 'default', codebaseUrls: {} };
 
     // --- Config ---
     fetch('/api/config').then(function(r){ return r.json(); }).then(function(c){
         appConfig.logUrl = c.logUrl || '';
         appConfig.namespace = c.namespace || 'default';
+        appConfig.codebaseUrls = c.codebaseUrls || {};
     });
 
     function buildLogUrl(podId) {
@@ -218,6 +220,8 @@
         window.scrollTo(0, 0);
 
         if (hash === '#/' || hash === '#') {
+            renderProjects();
+        } else if (hash === '#/home') {
             renderHome();
         } else if (hash === '#/register') {
             renderRegister();
@@ -226,12 +230,95 @@
         } else if (hash.startsWith('#/status/')) {
             renderStatus(hash.slice('#/status/'.length));
         } else {
-            renderHome();
+            renderProjects();
         }
     }
 
     window.addEventListener('hashchange', route);
     window.addEventListener('DOMContentLoaded', route);
+
+    // --- SSH to HTTP conversion ---
+    function sshToHttp(sshUrl, webhookType) {
+        if (!sshUrl) return '';
+        var baseUrl = appConfig.codebaseUrls[webhookType] || '';
+        if (!baseUrl) return '';
+
+        // Remove trailing slash from baseUrl
+        baseUrl = baseUrl.replace(/\/+$/, '');
+
+        if (sshUrl.startsWith('ssh://')) {
+            // ssh://git@host:port/path.git → baseUrl/path
+            var parts = sshUrl.replace('ssh://', '').split(':');
+            if (parts.length >= 2) {
+                var path = parts[parts.length - 1];
+                // Remove port number from path if present
+                if (/^\d+\//.test(path)) {
+                    path = path.replace(/^\d+\//, '');
+                }
+                return baseUrl + '/' + path.replace(/\.git$/, '');
+            }
+        } else if (sshUrl.startsWith('git@')) {
+            // git@host:path.git → baseUrl/path
+            var colonIdx = sshUrl.indexOf(':');
+            if (colonIdx > 0) {
+                var path = sshUrl.substring(colonIdx + 1);
+                return baseUrl + '/' + path.replace(/\.git$/, '');
+            }
+        }
+        return '';
+    }
+
+    // --- Projects List ---
+    function renderProjects() {
+        app.innerHTML =
+            '<p class="page-title">Registered <b>Projects</b></p>' +
+            '<div style="margin-bottom:20px">' +
+                '<input type="text" id="searchInput" placeholder="Filter by repository URL..." style="max-width:400px">' +
+            '</div>' +
+            '<div id="projectsList"><p style="color:#999">Loading...</p></div>';
+
+        fetch('/api/projects')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    document.getElementById('projectsList').innerHTML = '<p style="color:#c00">' + escHtml(data.error) + '</p>';
+                    return;
+                }
+                window._projects = data.projects || [];
+                renderProjectsList(window._projects);
+
+                document.getElementById('searchInput').addEventListener('input', function() {
+                    var q = this.value.toLowerCase();
+                    var filtered = window._projects.filter(function(p) {
+                        return !q || (p.RepoUrl && p.RepoUrl.toLowerCase().indexOf(q) >= 0);
+                    });
+                    renderProjectsList(filtered);
+                });
+            })
+            .catch(function(err) {
+                document.getElementById('projectsList').innerHTML = '<p style="color:#c00">Failed to load: ' + escHtml(String(err)) + '</p>';
+            });
+    }
+
+    function renderProjectsList(projects) {
+        var el = document.getElementById('projectsList');
+        if (!projects || projects.length === 0) {
+            el.innerHTML = '<p style="color:#999">No projects registered. <a href="#/register">Create one</a></p>';
+            return;
+        }
+
+        var html = '<table><thead><tr><th>Type</th><th>Repository</th><th>Webhook ID</th></tr></thead><tbody>';
+        for (var i = 0; i < projects.length; i++) {
+            var p = projects[i];
+            var httpUrl = sshToHttp(p.RepoUrl, p.WebhookType);
+            var repoHtml = httpUrl
+                ? '<a target="_blank" href="' + escAttr(httpUrl) + '">' + escHtml(p.RepoUrl) + '</a>'
+                : escHtml(p.RepoUrl);
+            html += '<tr><td>' + escHtml(p.WebhookType) + '</td><td>' + repoHtml + '</td><td><code style="font-size:1.2rem;color:#999">' + escHtml(p.Id) + '</code></td></tr>';
+        }
+        html += '</tbody></table>';
+        el.innerHTML = html;
+    }
 
     // --- Home ---
     function renderHome() {
@@ -257,6 +344,7 @@
                         '<p>Register a new pipeline in neutron system.</p>' +
                         '<p>Add neutron public key to your code base.</p>' +
                         '<a href="#/register" class="btn btn-primary" style="margin-top:16px">Create pipeline</a>' +
+                        '<a href="#/" class="btn btn-outline" style="margin-top:16px;margin-left:8px">View Projects</a>' +
                     '</div>' +
                     '<div class="step">' +
                         '<p class="step-num">3</p>' +

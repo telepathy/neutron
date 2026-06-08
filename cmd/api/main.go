@@ -159,10 +159,24 @@ func main() {
 	// --- API endpoints ---
 
 	r.GET("/api/config", func(c *gin.Context) {
+		codebaseUrls := make(map[string]string)
+		for k, v := range config.BaseConfig {
+			codebaseUrls[k] = v.Url
+		}
 		c.JSON(http.StatusOK, gin.H{
-			"logUrl":     config.LogUrl,
-			"namespace":  config.Kubernetes.Namespace,
+			"logUrl":      config.LogUrl,
+			"namespace":   config.Kubernetes.Namespace,
+			"codebaseUrls": codebaseUrls,
 		})
+	})
+
+	r.GET("/api/projects", func(c *gin.Context) {
+		projects, err := repo.ListProjects()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"projects": projects})
 	})
 
 	r.POST("/api/register", func(c *gin.Context) {

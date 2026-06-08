@@ -1,25 +1,35 @@
 package internal
 
 import (
-	"database/sql"
 	_ "embed"
 	"encoding/json"
-	_ "github.com/go-sql-driver/mysql"
 	"log"
 	"neutron/internal/model"
+
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type PipelineProject struct {
-	Id          string
-	WebhookType string
-	RepoUrl     string
+	Id          string `gorm:"column:id;primaryKey"`
+	WebhookType string `gorm:"column:webhook_type"`
+	RepoUrl     string `gorm:"column:repo_url"`
+}
+
+func (PipelineProject) TableName() string {
+	return "neutron_project"
 }
 
 type PipelineJob struct {
-	Id        int
-	ProjectId string
-	Name      string
-	Status    string
+	Id        int    `gorm:"column:id;primaryKey;autoIncrement"`
+	ProjectId string `gorm:"column:project_id"`
+	Name      string `gorm:"column:name"`
+	Status    string `gorm:"column:status"`
+}
+
+func (PipelineJob) TableName() string {
+	return "neutron_job"
 }
 
 type JobStatus struct {
@@ -33,48 +43,56 @@ type JobStatus struct {
 }
 
 type Repository struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 func NewRepository(config model.Config) *Repository {
-	db, err := sql.Open("mysql", config.Database)
+	db, err := gorm.Open(mysql.Open(config.Database), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
 	if err != nil {
 		log.Fatalf("cannot connect to database: %v", err)
 	}
+
+	// Auto-migrate tables
+	if err := db.AutoMigrate(&PipelineProject{}, &PipelineJob{}); err != nil {
+		log.Fatalf("failed to auto-migrate database: %v", err)
+	}
+
 	return &Repository{
 		db: db,
 	}
 }
 
 func (r *Repository) Close() {
-	err := r.db.Close()
+	sqlDB, err := r.db.DB()
 	if err != nil {
 		return
 	}
+	sqlDB.Close()
 }
 
 func (r *Repository) GetWebhookConfig(id string) PipelineProject {
-	var webhookConfig PipelineProject
-	row, err := r.db.Query("SELECT webhook_type,id,repo_url FROM neutron_project WHERE id=?", id)
-	if err != nil {
-		return webhookConfig
+	var project PipelineProject
+	result := r.db.Where("id = ?", id).First(&project)
+	if result.Error != nil {
+		return PipelineProject{}
 	}
-	defer row.Close()
-	for row.Next() {
-		_ = row.Scan(&webhookConfig.WebhookType, &webhookConfig.Id, &webhookConfig.RepoUrl)
-		break
-	}
-	return webhookConfig
+	return project
 }
 
 func (r *Repository) AddWebhookConfig(p PipelineProject) error {
-	_, err := r.db.Exec("INSERT INTO neutron_project(id, webhook_type, repo_url) VALUES (?, ?, ?)", p.Id, p.WebhookType, p.RepoUrl)
-	return err
+	return r.db.Create(&p).Error
+}
+
+func (r *Repository) ListProjects() ([]PipelineProject, error) {
+	var projects []PipelineProject
+	err := r.db.Order("id").Find(&projects).Error
+	return projects, err
 }
 
 func (r *Repository) AddJob(job PipelineJob) error {
-	_, err := r.db.Exec("INSERT INTO neutron_job(project_id, name, status) VALUES(?, ?, ?)", job.ProjectId, job.Name, job.Status)
-	return err
+	return r.db.Create(&job).Error
 }
 
 func (r *Repository) UpdateJobStatus(jobName string, status JobStatus) error {
@@ -82,27 +100,18 @@ func (r *Repository) UpdateJobStatus(jobName string, status JobStatus) error {
 	if err != nil {
 		return err
 	}
-	_, err = r.db.Exec("UPDATE neutron_job SET status=? WHERE name=?", string(statusBytes), jobName)
-	return err
+	return r.db.Model(&PipelineJob{}).Where("name = ?", jobName).Update("status", string(statusBytes)).Error
 }
 
 func (r *Repository) GetJobStatus(jobName string) (JobStatus, error) {
-	row, err := r.db.Query("SELECT status FROM neutron_job WHERE name=?", jobName)
-	if err != nil {
+	var job PipelineJob
+	result := r.db.Where("name = ?", jobName).First(&job)
+	if result.Error != nil {
+		return JobStatus{}, result.Error
+	}
+	var status JobStatus
+	if err := json.Unmarshal([]byte(job.Status), &status); err != nil {
 		return JobStatus{}, err
 	}
-	defer row.Close()
-	var statusString string
-	for row.Next() {
-		if err := row.Scan(&statusString); err != nil {
-			return JobStatus{}, err
-		}
-		break
-	}
-	var result JobStatus
-	if err := json.Unmarshal([]byte(statusString), &result); err != nil {
-		return JobStatus{}, err
-	}
-	return result, nil
+	return status, nil
 }
-
