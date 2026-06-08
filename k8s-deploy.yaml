@@ -37,7 +37,7 @@ metadata:
 type: Opaque
 stringData:
   config.yaml: |
-    host: "http://your-neutron-external-address"
+    host: "http://your-neutron-external-address:30080"
     port: 8888
     database: "root:root@tcp(mysql.default.svc.cluster.local:3306)/neutron?charset=utf8mb4&parseTime=True&loc=Local"
     salt: "change-me"

@@ -129,11 +129,7 @@ func main() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		fullHost := config.Host
-		if config.Port != 80 && config.Port != 443 {
-			fullHost = fmt.Sprintf("%s:%d", fullHost, config.Port)
-		}
-		webhookUrl := fmt.Sprintf("%s/webhook/%s", fullHost, p.Id)
+		webhookUrl := fmt.Sprintf("%s/webhook/%s", config.Host, p.Id)
 		c.JSON(http.StatusOK, gin.H{
 			"id":          p.Id,
 			"webhookType": p.WebhookType,
@@ -286,7 +282,7 @@ func main() {
 				extraEnv...,
 			)
 			jobClient := clientSet.BatchV1().Jobs(config.Kubernetes.Namespace)
-			neutronHost := fmt.Sprintf("%s:%d", config.Host, config.Port)
+			neutronHost := config.Host
 			createdJob, err := jobClient.Create(context.Background(), l.CreateJob(neutronHost), metav1.CreateOptions{})
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
