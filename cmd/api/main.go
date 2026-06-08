@@ -390,6 +390,7 @@ func main() {
 				job.Image,
 				config.Kubernetes.GitPrivateKey,
 				config.Kubernetes.ImagePullSecrets,
+				platform,
 				extraEnv...,
 			)
 			jobClient := clientSet.BatchV1().Jobs(config.Kubernetes.Namespace)

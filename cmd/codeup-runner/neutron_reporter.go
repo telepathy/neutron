@@ -11,15 +11,19 @@ import (
 )
 
 type NeutronReporter struct {
-	apiUrl  string
-	jobName string
-	client  *http.Client
+	apiUrl      string
+	jobName     string
+	triggerType string
+	webhookType string
+	client      *http.Client
 }
 
-func NewNeutronReporter(apiUrl string, jobName string) *NeutronReporter {
+func NewNeutronReporter(apiUrl string, jobName string, triggerType string, webhookType string) *NeutronReporter {
 	return &NeutronReporter{
-		apiUrl:  apiUrl,
-		jobName: jobName,
+		apiUrl:      apiUrl,
+		jobName:     jobName,
+		triggerType: triggerType,
+		webhookType: webhookType,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -28,15 +32,15 @@ func NewNeutronReporter(apiUrl string, jobName string) *NeutronReporter {
 
 func (r *NeutronReporter) Report(jobName string, stepName string, status model.StepResult, description string) {
 	payload := map[string]interface{}{
-		"webhook_type": "GitLab",
-		"trigger_type": stepName,
+		"webhook_type": r.webhookType,
+		"trigger_type": r.triggerType,
 		"active":       0,
 		"succeeded":    0,
 		"failed":       0,
 	}
 
 	switch status {
-	case model.Running:
+	case model.Running, model.Pending:
 		payload["active"] = 1
 	case model.Success:
 		payload["succeeded"] = 1

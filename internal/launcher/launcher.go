@@ -18,10 +18,11 @@ type Launcher struct {
 	PipelineImage    string
 	SshKeyName       string
 	ImagePullSecrets []string
+	Platform         string
 	ExtraEnv         []v1.EnvVar // platform-specific env vars (e.g. TARGET_BRANCH for GitLab MR)
 }
 
-func NewLauncher(namespace string, runnerConfig model.RunnerConfig, initImage string, checkoutImage string, baseImage string, keyName string, imagePullSecrets []string, extraEnv ...v1.EnvVar) *Launcher {
+func NewLauncher(namespace string, runnerConfig model.RunnerConfig, initImage string, checkoutImage string, baseImage string, keyName string, imagePullSecrets []string, platform string, extraEnv ...v1.EnvVar) *Launcher {
 	return &Launcher{
 		Namespace:        namespace,
 		RunnerConfig:     runnerConfig,
@@ -30,12 +31,14 @@ func NewLauncher(namespace string, runnerConfig model.RunnerConfig, initImage st
 		PipelineImage:    baseImage,
 		SshKeyName:       keyName,
 		ImagePullSecrets: imagePullSecrets,
+		Platform:         platform,
 		ExtraEnv:         extraEnv,
 	}
 }
 
 func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 	ts := time.Now().Format("20060102-150405")
+	fullJobName := fmt.Sprintf("neutron-%s-%s", l.RunnerConfig.JobName, ts)
 	var checkoutCommand string
 	if l.RunnerConfig.Trigger == "MR" {
 		// clone target branch, fetch source commit, merge
@@ -58,19 +61,21 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 		{Name: "REPORT_SHA", Value: l.RunnerConfig.ReportSha},
 		{Name: "TRIGGER", Value: l.RunnerConfig.Trigger},
 		{Name: "JOB_NAME", Value: l.RunnerConfig.JobName},
+		{Name: "FULL_JOB_NAME", Value: fullJobName},
 		{Name: "GIT_REPO_URL", Value: l.RunnerConfig.GitRepoUrl},
 		{Name: "GIT_PRIVATE_KEY", Value: l.RunnerConfig.GitPrivateKey},
-		{Name: "PIPELINE_URL", Value: fmt.Sprintf("%s/#/status/neutron-%s-%s", neutronHost, l.RunnerConfig.JobName, ts)},
+		{Name: "PIPELINE_URL", Value: fmt.Sprintf("%s/#/status/%s", neutronHost, fullJobName)},
 		{Name: "NEUTRON_API_URL", Value: fmt.Sprintf("http://neutron-api.%s.svc.cluster.local:8888", l.Namespace)},
 	}
 	env = append(env, l.ExtraEnv...)
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("neutron-%s-%s", l.RunnerConfig.JobName, ts),
+			Name:      fullJobName,
 			Namespace: l.Namespace,
 			Annotations: map[string]string{
 				"sourceLink":  fmt.Sprintf("%s/projects/%s", l.RunnerConfig.CodebaseUrl, l.RunnerConfig.ProjectId),
+				"sourceType":  l.Platform,
 				"triggerType": l.RunnerConfig.Trigger,
 				"gitPath":     l.RunnerConfig.GitRepoUrl,
 			},

@@ -18,7 +18,11 @@ func main() {
 	// Add Neutron reporter if API URL is set
 	neutronApiUrl := os.Getenv("NEUTRON_API_URL")
 	if neutronApiUrl != "" {
-		neutronReporter := NewNeutronReporter(neutronApiUrl, runnerConfig.JobName)
+		fullJobName := os.Getenv("FULL_JOB_NAME")
+		if fullJobName == "" {
+			fullJobName = runnerConfig.JobName
+		}
+		neutronReporter := NewNeutronReporter(neutronApiUrl, fullJobName, runnerConfig.Trigger, "GitLab")
 		reporters = append(reporters, neutronReporter)
 	}
 
