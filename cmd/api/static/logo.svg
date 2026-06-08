@@ -1,8 +1,8 @@
 <svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
-<g stroke="#003366" stroke-width="8" stroke-linecap="round">
+<g stroke="#9b4dca" stroke-width="8" stroke-linecap="round">
     <ellipse cx="100" cy="100" rx="80" ry="30" transform="rotate(45 100 100)" />
     <ellipse cx="100" cy="100" rx="80" ry="30" transform="rotate(135 100 100)" />
-    <circle cx="100" cy="100" r="18" fill="#aaqccff"/>
-    <circle cx="155" cy="70" r="10" fill="#cccccc"/>
+    <circle cx="100" cy="100" r="18" fill="#e9d5ff"/>
+    <circle cx="155" cy="70" r="10" fill="#d8b4fe"/>
 </g>
 </svg>
