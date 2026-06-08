@@ -9,7 +9,8 @@ import (
 
 func main() {
 	runnerConfig := getConfig()
-	reporter := NewGitlabReporter(runnerConfig)
+	skipTLS := os.Getenv("SKIP_TLS_VERIFY") == "true"
+	reporter := NewGitlabReporter(runnerConfig, skipTLS)
 	runner := service.NewRunner("/repo", runnerConfig.Trigger, runnerConfig.JobName, reporter)
 	runner.Run()
 }

@@ -1,6 +1,7 @@
 package codeup
 
 import (
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -47,6 +48,7 @@ type FileResponse struct {
 type Parser struct {
 	accessApiPath string
 	accessToken   string
+	client        *http.Client
 	CodeSha       string
 	ReportSha     string
 	TargetBranch  string
@@ -56,7 +58,7 @@ type Parser struct {
 
 const maxWebhookBodySize = 1 << 20 // 1MB
 
-func NewCodeupParser(requestBody io.ReadCloser, codeupHost string, token string) (*Parser, error) {
+func NewCodeupParser(requestBody io.ReadCloser, codeupHost string, token string, skipTLSVerify bool) (*Parser, error) {
 	var request WebhookRequest
 	body, err := io.ReadAll(io.LimitReader(requestBody, maxWebhookBodySize))
 	defer requestBody.Close()
@@ -97,9 +99,16 @@ func NewCodeupParser(requestBody io.ReadCloser, codeupHost string, token string)
 	if projectId == 0 {
 		return nil, fmt.Errorf("missing project ID in webhook payload")
 	}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: skipTLSVerify},
+		},
+	}
 	return &Parser{
 		accessApiPath: fmt.Sprintf("%s/api/v4/projects/%d/repository/files/neutron.yaml", codeupHost, projectId),
 		accessToken:   token,
+		client:        client,
 		Request:       request,
 		CodeSha:       ref,
 		ReportSha:     reportSha,
@@ -109,7 +118,6 @@ func NewCodeupParser(requestBody io.ReadCloser, codeupHost string, token string)
 }
 
 func (g *Parser) Parse() (model.Pipeline, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
 	req, err := http.NewRequest("GET", g.accessApiPath, nil)
 	if err != nil {
 		return model.Pipeline{}, err
@@ -118,7 +126,7 @@ func (g *Parser) Parse() (model.Pipeline, error) {
 	query.Add("ref", g.CodeSha)
 	req.URL.RawQuery = query.Encode()
 	req.Header.Add("PRIVATE-TOKEN", g.accessToken)
-	res, err := client.Do(req)
+	res, err := g.client.Do(req)
 	if err != nil {
 		return model.Pipeline{}, err
 	}

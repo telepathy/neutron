@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -24,10 +25,15 @@ type GitlabReporter struct {
 	targetUrl string
 }
 
-func NewGitlabReporter(c model.RunnerConfig) *GitlabReporter {
+func NewGitlabReporter(c model.RunnerConfig, skipTLSVerify bool) *GitlabReporter {
 	return &GitlabReporter{
-		config:    c,
-		client:    &http.Client{Timeout: 10 * time.Second},
+		config: c,
+		client: &http.Client{
+			Timeout: 10 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: skipTLSVerify},
+			},
+		},
 		url:       fmt.Sprintf("%s/api/v4/projects/%s/statuses/%s", c.CodebaseUrl, c.ProjectId, c.ReportSha),
 		targetUrl: c.PipelineUrl,
 	}

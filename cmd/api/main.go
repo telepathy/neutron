@@ -202,7 +202,7 @@ func main() {
 
 		switch platform {
 		case "GitLab":
-			p, parseErr := gitlab.NewGitLabParser(c.Request.Body, config.BaseConfig["GitLab"].Url, config.BaseConfig["GitLab"].Token)
+			p, parseErr := gitlab.NewGitLabParser(c.Request.Body, config.BaseConfig["GitLab"].Url, config.BaseConfig["GitLab"].Token, config.BaseConfig["GitLab"].SkipTLSVerify)
 			if parseErr != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": parseErr.Error()})
 				return
@@ -223,7 +223,7 @@ func main() {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Codeup codebase not configured"})
 				return
 			}
-			p, parseErr := codeup.NewCodeupParser(c.Request.Body, codeupCfg.Url, codeupCfg.Token)
+			p, parseErr := codeup.NewCodeupParser(c.Request.Body, codeupCfg.Url, codeupCfg.Token, codeupCfg.SkipTLSVerify)
 			if parseErr != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": parseErr.Error()})
 				return
@@ -271,6 +271,9 @@ func main() {
 			// platform-specific extra env vars
 			var extraEnv []v1.EnvVar
 			extraEnv = append(extraEnv, v1.EnvVar{Name: "RUNNER_PLATFORM", Value: strings.ToLower(platform)})
+			if baseCfg.SkipTLSVerify {
+				extraEnv = append(extraEnv, v1.EnvVar{Name: "SKIP_TLS_VERIFY", Value: "true"})
+			}
 			if platform == "GitLab" && pTargetBranch != "" {
 				extraEnv = append(extraEnv, v1.EnvVar{Name: "TARGET_BRANCH", Value: pTargetBranch})
 			}

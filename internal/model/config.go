@@ -21,6 +21,7 @@ type KubernetesConfig struct {
 }
 
 type CodeBase struct {
-	Url   string `yaml:"url"`
-	Token string `yaml:"token"`
+	Url            string `yaml:"url"`
+	Token          string `yaml:"token"`
+	SkipTLSVerify  bool   `yaml:"skip_tls_verify,omitempty"`
 }
