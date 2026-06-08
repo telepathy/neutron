@@ -165,8 +165,8 @@
 </head>
 <body>
 <nav>
-    <a class="brand" href="#/home"><img src="/static/logo.svg" alt="neutron" class="logo">neutron</a>
-    <a href="#/">Projects</a>
+    <a class="brand" href="#/"><img src="/static/logo.svg" alt="neutron" class="logo">neutron</a>
+    <a href="#/projects">Projects</a>
     <a href="#/register">Register</a>
 </nav>
 <div id="app" class="container"></div>
@@ -219,10 +219,10 @@
         app.innerHTML = '';
         window.scrollTo(0, 0);
 
-        if (hash === '#/' || hash === '#') {
-            renderProjects();
-        } else if (hash === '#/home') {
+        if (hash === '#/' || hash === '#' || hash === '#/home') {
             renderHome();
+        } else if (hash === '#/projects') {
+            renderProjects();
         } else if (hash === '#/register') {
             renderRegister();
         } else if (hash.startsWith('#/register/success?')) {
@@ -232,7 +232,7 @@
         } else if (hash.startsWith('#/project/')) {
             renderProjectJobs(hash.slice('#/project/'.length));
         } else {
-            renderProjects();
+            renderHome();
         }
     }
 
@@ -326,7 +326,7 @@
     function renderProjectJobs(projectId) {
         app.innerHTML =
             '<p class="page-title">Pipeline history for <b>' + escHtml(projectId) + '</b></p>' +
-            '<div style="margin-bottom:16px"><a href="#/" class="btn btn-outline" style="padding:6px 16px;font-size:1.3rem">← Back to Projects</a></div>' +
+            '<div style="margin-bottom:16px"><a href="#/projects" class="btn btn-outline" style="padding:6px 16px;font-size:1.3rem">← Back to Projects</a></div>' +
             '<div id="jobsList"><p style="color:#999">Loading...</p></div>';
 
         fetch('/api/projects/' + encodeURIComponent(projectId) + '/jobs')
@@ -395,7 +395,7 @@
                         '<p>Register a new pipeline in neutron system.</p>' +
                         '<p>Add neutron public key to your code base.</p>' +
                         '<a href="#/register" class="btn btn-primary" style="margin-top:16px">Create pipeline</a>' +
-                        '<a href="#/" class="btn btn-outline" style="margin-top:16px;margin-left:8px">View Projects</a>' +
+                        '<a href="#/projects" class="btn btn-outline" style="margin-top:16px;margin-left:8px">View Projects</a>' +
                     '</div>' +
                     '<div class="step">' +
                         '<p class="step-num">3</p>' +
