@@ -33,9 +33,9 @@ var staticFs embed.FS
 
 func main() {
 	var config model.Config
-	configPath := "./config.yaml"
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		configPath = "config.yaml"
+	configPath := os.Getenv("NEUTRON_CONFIG")
+	if configPath == "" {
+		configPath = "./config.yaml"
 	}
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -43,6 +43,39 @@ func main() {
 	}
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		log.Fatalf("cannot parse config file: %v", err)
+	}
+	// env overrides
+	if v := os.Getenv("NEUTRON_HOST"); v != "" {
+		config.Host = v
+	}
+	if v := os.Getenv("NEUTRON_PORT"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil {
+			config.Port = p
+		}
+	}
+	if v := os.Getenv("NEUTRON_DATABASE"); v != "" {
+		config.Database = v
+	}
+	if v := os.Getenv("NEUTRON_SALT"); v != "" {
+		config.Salt = v
+	}
+	if v := os.Getenv("NEUTRON_LOG_URL"); v != "" {
+		config.LogUrl = v
+	}
+	if v := os.Getenv("NEUTRON_KUBE_NAMESPACE"); v != "" {
+		config.Kubernetes.Namespace = v
+	}
+	if v := os.Getenv("NEUTRON_KUBE_CONFIG"); v != "" {
+		config.Kubernetes.KubeConfig = v
+	}
+	if v := os.Getenv("NEUTRON_GIT_PRIVATE_KEY"); v != "" {
+		config.Kubernetes.GitPrivateKey = v
+	}
+	if v := os.Getenv("NEUTRON_INIT_IMAGE"); v != "" {
+		config.Kubernetes.InitImage = v
+	}
+	if v := os.Getenv("NEUTRON_CHECKOUT_IMAGE"); v != "" {
+		config.Kubernetes.CheckoutImage = v
 	}
 	repo := internal.NewRepository(config)
 
