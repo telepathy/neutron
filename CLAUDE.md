@@ -72,7 +72,7 @@ Runtime config is `config.yaml` (gitignored). Shape defined by `internal/model/c
 
 ## Conventions
 
-- Go 1.23.0, vendored dependencies (`vendor/`)
+- Go 1.23.0, Go modules (no vendor)
 - Module name: `neutron`
 - No test suite or linting config exists yet
 - `test.http` contains manual HTTP requests for JetBrains HTTP Client
