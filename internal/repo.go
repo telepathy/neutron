@@ -23,14 +23,29 @@ func (PipelineProject) TableName() string {
 }
 
 type PipelineJob struct {
-	Id        int    `gorm:"column:id;primaryKey;autoIncrement"`
-	ProjectId string `gorm:"column:project_id"`
-	Name      string `gorm:"column:name"`
-	Status    string `gorm:"column:status"`
+	Id          int64        `gorm:"column:id;primaryKey;autoIncrement"`
+	ProjectId   string       `gorm:"column:project_id"`
+	Name        string       `gorm:"column:name;type:varchar(255);uniqueIndex"`
+	Status      string       `gorm:"column:status;type:text"`
+	Completed   bool         `gorm:"column:completed;default:false"`
+	CompletedAt *time.Time   `gorm:"column:completed_at"`
+	Pods        []PipelinePod `gorm:"foreignKey:JobId"`
 }
 
 func (PipelineJob) TableName() string {
 	return "neutron_job"
+}
+
+type PipelinePod struct {
+	Id     int64  `gorm:"column:id;primaryKey;autoIncrement"`
+	JobId  int64  `gorm:"column:job_id;index"`
+	PodName string `gorm:"column:pod_name;type:varchar(255)"`
+	PodUid  string `gorm:"column:pod_uid;type:varchar(255)"`
+	Phase   string `gorm:"column:phase;type:varchar(50)"`
+}
+
+func (PipelinePod) TableName() string {
+	return "neutron_pod"
 }
 
 type JobStatus struct {
@@ -50,13 +65,14 @@ type Repository struct {
 func NewRepository(config model.Config) *Repository {
 	db, err := gorm.Open(mysql.Open(config.Database), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Warn),
+		DisableForeignKeyConstraintWhenMigrating: true,
 	})
 	if err != nil {
 		log.Fatalf("cannot connect to database: %v", err)
 	}
 
 	// Auto-migrate tables
-	if err := db.AutoMigrate(&PipelineProject{}, &PipelineJob{}); err != nil {
+	if err := db.AutoMigrate(&PipelineProject{}, &PipelineJob{}, &PipelinePod{}); err != nil {
 		log.Fatalf("failed to auto-migrate database: %v", err)
 	}
 
@@ -71,6 +87,10 @@ func (r *Repository) Close() {
 		return
 	}
 	sqlDB.Close()
+}
+
+func (r *Repository) DB() *gorm.DB {
+	return r.db
 }
 
 func (r *Repository) GetWebhookConfig(id string) PipelineProject {
@@ -120,6 +140,38 @@ func (r *Repository) GetJobStatus(jobName string) (JobStatus, error) {
 func (r *Repository) ListProjectJobs(projectId string, days int) ([]PipelineJob, error) {
 	var jobs []PipelineJob
 	err := r.db.Where("project_id = ? AND name >= ?", projectId, time.Now().AddDate(0, 0, -days).Format("20060102")).
-		Order("id DESC").Find(&jobs).Error
+		Order("id DESC").Preload("Pods").Find(&jobs).Error
 	return jobs, err
+}
+
+func (r *Repository) GetJobByName(name string) (*PipelineJob, error) {
+	var job PipelineJob
+	result := r.db.Where("name = ?", name).Preload("Pods").First(&job)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return &job, nil
+}
+
+func (r *Repository) AddPod(pod PipelinePod) error {
+	return r.db.Create(&pod).Error
+}
+
+func (r *Repository) UpdatePodStatus(podUid string, phase string) error {
+	return r.db.Model(&PipelinePod{}).Where("pod_uid = ?", podUid).Update("phase", phase).Error
+}
+
+func (r *Repository) GetJobPods(jobId int) ([]PipelinePod, error) {
+	var pods []PipelinePod
+	err := r.db.Where("job_id = ?", jobId).Find(&pods).Error
+	return pods, err
+}
+
+func (r *Repository) MarkJobCompleted(jobName string) error {
+	now := time.Now()
+	return r.db.Model(&PipelineJob{}).Where("name = ?", jobName).
+		Updates(map[string]interface{}{
+			"completed":    true,
+			"completed_at": now,
+		}).Error
 }

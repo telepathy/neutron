@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -212,7 +213,30 @@ func main() {
 	r.GET("/api/status/:jobName", func(c *gin.Context) {
 		jobName := c.Param("jobName")
 
-		// Always try to get job and pods from K8s
+		// Check if job is completed in database - if yes, return from DB only
+		dbJob, dbErr := repo.GetJobByName(jobName)
+		if dbErr == nil && dbJob.Completed {
+			var status internal.JobStatus
+			_ = json.Unmarshal([]byte(dbJob.Status), &status)
+			// Convert pods to K8s-like format for frontend compatibility
+			var podItems []gin.H
+			for _, pod := range dbJob.Pods {
+				podItems = append(podItems, gin.H{
+					"metadata": gin.H{"name": pod.PodName, "uid": pod.PodUid},
+					"status":   gin.H{"phase": pod.Phase},
+				})
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"jobName": jobName,
+				"status":  status,
+				"job":     gin.H{"metadata": gin.H{"name": jobName}},
+				"pods":    gin.H{"items": podItems},
+				"source":  "database",
+			})
+			return
+		}
+
+		// Job not completed, fetch from K8s
 		jobClient := clientSet.BatchV1().Jobs(config.Kubernetes.Namespace)
 		job, err := jobClient.Get(context.Background(), jobName, metav1.GetOptions{})
 		if err != nil {
@@ -231,20 +255,7 @@ func main() {
 			return
 		}
 
-		// Check if we have status in database
-		status, dbErr := repo.GetJobStatus(jobName)
-		if dbErr == nil && (status.Active > 0 || status.Succeeded > 0 || status.Failed > 0) {
-			c.JSON(http.StatusOK, gin.H{
-				"jobName": jobName,
-				"status":  status,
-				"job":     job,
-				"pods":    pods,
-				"source":  "database",
-			})
-			return
-		}
-
-		// Derive status from K8s job and update database
+		// Derive status from K8s job
 		ann := job.Annotations
 		k8sStatus := internal.JobStatus{
 			WebhookType: ann["sourceType"],
@@ -263,6 +274,32 @@ func main() {
 		}
 		// Update database with derived status
 		_ = repo.UpdateJobStatus(jobName, k8sStatus)
+
+		// Store pod info in database
+		if dbErr == nil {
+			for _, pod := range pods.Items {
+				// Check if pod already exists
+				var existingPod internal.PipelinePod
+				result := repo.DB().Where("job_id = ? AND pod_uid = ?", dbJob.Id, string(pod.UID)).First(&existingPod)
+				if result.Error != nil {
+					// Pod doesn't exist, create it
+					_ = repo.AddPod(internal.PipelinePod{
+						JobId:   dbJob.Id,
+						PodName: pod.Name,
+						PodUid:  string(pod.UID),
+						Phase:   string(pod.Status.Phase),
+					})
+				} else {
+					// Update existing pod status
+					_ = repo.UpdatePodStatus(string(pod.UID), string(pod.Status.Phase))
+				}
+			}
+		}
+
+		// If job is completed, mark it in database
+		if job.Status.Succeeded > 0 || job.Status.Failed > 0 {
+			_ = repo.MarkJobCompleted(jobName)
+		}
 
 		c.JSON(http.StatusOK, gin.H{
 			"jobName": jobName,
