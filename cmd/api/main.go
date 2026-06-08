@@ -46,6 +46,9 @@ func main() {
 	}
 	// env overrides
 	if v := os.Getenv("NEUTRON_HOST"); v != "" {
+		if !strings.HasPrefix(v, "http://") && !strings.HasPrefix(v, "https://") {
+			v = "http://" + v
+		}
 		config.Host = v
 	}
 	if v := os.Getenv("NEUTRON_PORT"); v != "" {
