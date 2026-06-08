@@ -456,10 +456,6 @@ func main() {
 			jobs = append(jobs, createdJob.Name)
 		}
 
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "pipeline": pipeline, "jobs": jobs})
 	})
 

@@ -2,13 +2,11 @@ package gitlab
 
 import (
 	"crypto/tls"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"gopkg.in/yaml.v3"
 	"io"
 	"net/http"
-	"neutron/internal/model"
+	"neutron/internal/parser"
 	"time"
 )
 
@@ -35,53 +33,26 @@ type LastCommit struct {
 	Id string `json:"id"`
 }
 
-type FileResponse struct {
-	Content string `json:"content"`
-}
-
 type Parser struct {
-	accessApiPath string
-	accessToken   string
-	client        *http.Client
-	CodeSha       string
-	ReportSha     string
-	TargetBranch  string
-	Request       WebhookRequest
-	Trigger       string
+	parser.Base
+	Request WebhookRequest
 }
-
-const maxWebhookBodySize = 1 << 20 // 1MB
 
 func NewGitLabParser(requestBody io.ReadCloser, gitlabHost string, token string, skipTLSVerify bool) (*Parser, error) {
-	var request WebhookRequest
-	body, err := io.ReadAll(io.LimitReader(requestBody, maxWebhookBodySize))
-	defer requestBody.Close()
+	body, err := parser.ReadBody(requestBody)
 	if err != nil {
-		return nil, fmt.Errorf("reading webhook body: %w", err)
+		return nil, err
 	}
+	var request WebhookRequest
 	if err := json.Unmarshal(body, &request); err != nil {
 		return nil, fmt.Errorf("parsing webhook body: %w", err)
 	}
-	var ref string
-	var trigger string
-	var reportSha string
-	var targetBranch string
-	switch request.WebhookType {
-	case "merge_request":
-		ref = request.Attributes.LastCommit.Id
-		reportSha = request.Attributes.LastCommit.Id
-		targetBranch = request.Attributes.TargetBranch
-		trigger = "MR"
-	case "tag_push":
-		ref = request.CodeSha
-		reportSha = request.CodeSha
-		trigger = "TAG"
-	case "push":
-		ref = request.CodeSha
-		reportSha = request.CodeSha
-		trigger = "PUSH"
-	default:
-		return nil, fmt.Errorf("unsupported webhook type: %s", request.WebhookType)
+
+	trigger, ref, reportSha, targetBranch, err := parser.DetectTrigger(
+		request.WebhookType, request.CodeSha, request.Attributes.LastCommit.Id, request.Attributes.TargetBranch,
+	)
+	if err != nil {
+		return nil, err
 	}
 	if ref == "" {
 		return nil, fmt.Errorf("missing commit SHA in webhook payload (type: %s)", request.WebhookType)
@@ -89,6 +60,7 @@ func NewGitLabParser(requestBody io.ReadCloser, gitlabHost string, token string,
 	if request.Project.Id == 0 {
 		return nil, fmt.Errorf("missing project ID in webhook payload")
 	}
+
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
@@ -96,50 +68,15 @@ func NewGitLabParser(requestBody io.ReadCloser, gitlabHost string, token string,
 		},
 	}
 	return &Parser{
-		accessApiPath: fmt.Sprintf("%s/api/v4/projects/%d/repository/files/neutron.yaml", gitlabHost, request.Project.Id),
-		accessToken:   token,
-		client:        client,
-		Request:       request,
-		CodeSha:       ref,
-		ReportSha:     reportSha,
-		TargetBranch:  targetBranch,
-		Trigger:       trigger,
+		Base: parser.Base{
+			AccessApiPath: fmt.Sprintf("%s/api/v4/projects/%d/repository/files/neutron.yaml", gitlabHost, request.Project.Id),
+			AccessToken:   token,
+			Client:        client,
+			CodeSha:       ref,
+			ReportSha:     reportSha,
+			TargetBranch:  targetBranch,
+			Trigger:       trigger,
+		},
+		Request: request,
 	}, nil
-}
-
-func (g *Parser) Parse() (model.Pipeline, error) {
-	req, err := http.NewRequest("GET", g.accessApiPath, nil)
-	if err != nil {
-		return model.Pipeline{}, err
-	}
-	query := req.URL.Query()
-	query.Add("ref", g.CodeSha)
-	req.URL.RawQuery = query.Encode()
-	req.Header.Add("PRIVATE-TOKEN", g.accessToken)
-	res, err := g.client.Do(req)
-	if err != nil {
-		return model.Pipeline{}, err
-	}
-	defer res.Body.Close()
-	if res.StatusCode == http.StatusNotFound {
-		return model.Pipeline{}, fmt.Errorf("neutron.yaml not found in repository (ref: %s)", g.CodeSha)
-	}
-	if res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden {
-		return model.Pipeline{}, fmt.Errorf("authentication failed when accessing GitLab API (status: %d)", res.StatusCode)
-	}
-	if res.StatusCode >= 400 {
-		return model.Pipeline{}, fmt.Errorf("GitLab API returned error (status: %d)", res.StatusCode)
-	}
-	var fileResponse FileResponse
-	err = json.NewDecoder(res.Body).Decode(&fileResponse)
-	if err != nil {
-		return model.Pipeline{}, err
-	}
-	neutronContent, err := base64.StdEncoding.DecodeString(fileResponse.Content)
-	if err != nil {
-		return model.Pipeline{}, err
-	}
-	var pipeline model.Pipeline
-	err = yaml.Unmarshal(neutronContent, &pipeline)
-	return pipeline, err
 }

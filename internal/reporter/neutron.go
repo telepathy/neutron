@@ -1,7 +1,8 @@
-package main
+package reporter
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,7 +11,7 @@ import (
 	"time"
 )
 
-type NeutronReporter struct {
+type Neutron struct {
 	apiUrl      string
 	jobName     string
 	triggerType string
@@ -18,19 +19,22 @@ type NeutronReporter struct {
 	client      *http.Client
 }
 
-func NewNeutronReporter(apiUrl string, jobName string, triggerType string, webhookType string) *NeutronReporter {
-	return &NeutronReporter{
+func NewNeutron(apiUrl string, jobName string, triggerType string, webhookType string, skipTLSVerify bool) *Neutron {
+	return &Neutron{
 		apiUrl:      apiUrl,
 		jobName:     jobName,
 		triggerType: triggerType,
 		webhookType: webhookType,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: skipTLSVerify},
+			},
 		},
 	}
 }
 
-func (r *NeutronReporter) Report(jobName string, stepName string, status model.StepResult, description string) {
+func (r *Neutron) Report(jobName string, stepName string, status model.StepResult, description string) {
 	payload := map[string]interface{}{
 		"webhook_type": r.webhookType,
 		"trigger_type": r.triggerType,

@@ -1,60 +1,26 @@
 package main
 
 import (
-	"log"
-	"neutron/internal/model"
+	"neutron/internal/reporter"
 	"neutron/internal/service"
 	"os"
+	"strings"
 )
 
 func main() {
-	runnerConfig := getConfig()
-
-	// Create reporters
-	reporters := []model.Reporter{NewNoOpReporter()}
-
-	// Add Neutron reporter if API URL is set
-	neutronApiUrl := os.Getenv("NEUTRON_API_URL")
-	if neutronApiUrl != "" {
-		fullJobName := os.Getenv("FULL_JOB_NAME")
-		if fullJobName == "" {
-			fullJobName = runnerConfig.JobName
-		}
-		neutronReporter := NewNeutronReporter(neutronApiUrl, fullJobName, runnerConfig.Trigger, "Codeup")
-		reporters = append(reporters, neutronReporter)
-	}
-
-	reporter := NewCompositeReporter(reporters...)
-	runner := service.NewRunner("/repo", runnerConfig.Trigger, runnerConfig.JobName, reporter)
-	runner.Run()
-}
-
-func getConfig() model.RunnerConfig {
-	commitSha := os.Getenv("COMMIT_SHA")
-	if commitSha == "" {
-		log.Fatalln("COMMIT_SHA is not set. Pipeline exit now.")
-	}
-	trigger := os.Getenv("TRIGGER")
-	if trigger == "" {
-		log.Fatalln("TRIGGER is not set. Pipeline exit now.")
-	}
+	apiUrl := os.Getenv("NEUTRON_API_URL")
+	fullJobName := os.Getenv("FULL_JOB_NAME")
 	jobName := os.Getenv("JOB_NAME")
-	if jobName == "" {
-		log.Fatalln("JOB_NAME is not set. Pipeline exit now.")
-	}
-	gitPrivateKey := os.Getenv("GIT_PRIVATE_KEY")
-	if gitPrivateKey == "" {
-		log.Fatalln("GIT_PRIVATE_KEY is not set. Pipeline exit now.")
-	}
-	gitRepoUrl := os.Getenv("GIT_REPO_URL")
-	if gitRepoUrl == "" {
-		log.Fatalln("GIT_REPO_URL is not set. Pipeline exit now.")
-	}
-	return model.RunnerConfig{
-		CommitSha:     commitSha,
-		JobName:       jobName,
-		Trigger:       trigger,
-		GitPrivateKey: gitPrivateKey,
-		GitRepoUrl:    gitRepoUrl,
-	}
+	triggerType := os.Getenv("TRIGGER")
+	webhookType := os.Getenv("RUNNER_PLATFORM")
+
+	skipTLS := strings.EqualFold(os.Getenv("SKIP_TLS_VERIFY"), "true")
+
+	// Composite: NoOp + Neutron
+	noopReporter := NewNoOpReporter()
+	neutronReporter := reporter.NewNeutron(apiUrl, fullJobName, triggerType, webhookType, skipTLS)
+	composite := reporter.NewComposite(noopReporter, neutronReporter)
+
+	runner := service.NewRunner("/repo", triggerType, jobName, composite)
+	runner.Run()
 }

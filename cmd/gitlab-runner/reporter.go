@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"neutron/internal/model"
+	"os"
 	"time"
 )
 
@@ -20,23 +21,30 @@ type message struct {
 
 type GitlabReporter struct {
 	client    *http.Client
-	config    model.RunnerConfig
 	url       string
+	token     string
 	targetUrl string
 }
 
-func NewGitlabReporter(c model.RunnerConfig, skipTLSVerify bool) *GitlabReporter {
+func NewGitlabReporterFromEnv(skipTLSVerify bool) (*GitlabReporter, error) {
+	codebaseUrl := os.Getenv("CODEBASE_URL")
+	projectId := os.Getenv("PROJECT_ID")
+	reportSha := os.Getenv("REPORT_SHA")
+	token := os.Getenv("CODEBASE_TOKEN")
+	pipelineUrl := os.Getenv("PIPELINE_URL")
+
+	url := fmt.Sprintf("%s/api/v4/projects/%s/statuses/%s", codebaseUrl, projectId, reportSha)
 	return &GitlabReporter{
-		config: c,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: skipTLSVerify},
 			},
 		},
-		url:       fmt.Sprintf("%s/api/v4/projects/%s/statuses/%s", c.CodebaseUrl, c.ProjectId, c.ReportSha),
-		targetUrl: c.PipelineUrl,
-	}
+		url:       url,
+		token:     token,
+		targetUrl: pipelineUrl,
+	}, nil
 }
 
 func (r *GitlabReporter) Report(jobName string, stepName string, status model.StepResult, description string) {
@@ -68,7 +76,7 @@ func (r *GitlabReporter) Report(jobName string, stepName string, status model.St
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("PRIVATE-TOKEN", r.config.CodebaseToken)
+	req.Header.Set("PRIVATE-TOKEN", r.token)
 	resp, err := r.client.Do(req)
 	if err != nil {
 		log.Printf("Warning: failed to report pipeline status to gitlab: %v", err)
