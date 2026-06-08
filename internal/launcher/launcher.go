@@ -11,24 +11,26 @@ import (
 )
 
 type Launcher struct {
-	Namespace      string
-	RunnerConfig   model.RunnerConfig
-	InitImage      string
-	CheckoutImage  string
-	PipelineImage  string
-	SshKeyName     string
-	ExtraEnv       []v1.EnvVar // platform-specific env vars (e.g. TARGET_BRANCH for GitLab MR)
+	Namespace        string
+	RunnerConfig     model.RunnerConfig
+	InitImage        string
+	CheckoutImage    string
+	PipelineImage    string
+	SshKeyName       string
+	ImagePullSecrets []string
+	ExtraEnv         []v1.EnvVar // platform-specific env vars (e.g. TARGET_BRANCH for GitLab MR)
 }
 
-func NewLauncher(namespace string, runnerConfig model.RunnerConfig, initImage string, checkoutImage string, baseImage string, keyName string, extraEnv ...v1.EnvVar) *Launcher {
+func NewLauncher(namespace string, runnerConfig model.RunnerConfig, initImage string, checkoutImage string, baseImage string, keyName string, imagePullSecrets []string, extraEnv ...v1.EnvVar) *Launcher {
 	return &Launcher{
-		Namespace:      namespace,
-		RunnerConfig:   runnerConfig,
-		InitImage:      initImage,
-		CheckoutImage:  checkoutImage,
-		PipelineImage:  baseImage,
-		SshKeyName:     keyName,
-		ExtraEnv:       extraEnv,
+		Namespace:        namespace,
+		RunnerConfig:     runnerConfig,
+		InitImage:        initImage,
+		CheckoutImage:    checkoutImage,
+		PipelineImage:    baseImage,
+		SshKeyName:       keyName,
+		ImagePullSecrets: imagePullSecrets,
+		ExtraEnv:         extraEnv,
 	}
 }
 
@@ -119,7 +121,8 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 							},
 						},
 					},
-					RestartPolicy: v1.RestartPolicyNever,
+					RestartPolicy:   v1.RestartPolicyNever,
+					ImagePullSecrets: l.imagePullSecrets(),
 					Volumes: []v1.Volume{
 						{Name: "pipeline", VolumeSource: v1.VolumeSource{EmptyDir: &v1.EmptyDirVolumeSource{}}},
 						{Name: "repo", VolumeSource: v1.VolumeSource{EmptyDir: &v1.EmptyDirVolumeSource{}}},
@@ -143,6 +146,16 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 
 func int32Ptr(i int32) *int32 {
 	return &i
+}
+
+func (l *Launcher) imagePullSecrets() []v1.LocalObjectReference {
+	refs := make([]v1.LocalObjectReference, 0, len(l.ImagePullSecrets))
+	for _, name := range l.ImagePullSecrets {
+		if name != "" {
+			refs = append(refs, v1.LocalObjectReference{Name: name})
+		}
+	}
+	return refs
 }
 
 // shellEscape wraps a string in single quotes for safe use in shell commands.

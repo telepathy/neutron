@@ -80,6 +80,14 @@ func main() {
 	if v := os.Getenv("NEUTRON_CHECKOUT_IMAGE"); v != "" {
 		config.Kubernetes.CheckoutImage = v
 	}
+	if v := os.Getenv("NEUTRON_IMAGE_PULL_SECRETS"); v != "" {
+		for _, s := range strings.Split(v, ",") {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				config.Kubernetes.ImagePullSecrets = append(config.Kubernetes.ImagePullSecrets, s)
+			}
+		}
+	}
 	if v := os.Getenv("NEUTRON_SKIP_TLS_VERIFY"); v == "true" {
 		for k, cb := range config.BaseConfig {
 			cb.SkipTLSVerify = true
@@ -321,6 +329,7 @@ func main() {
 				config.Kubernetes.CheckoutImage,
 				job.Image,
 				config.Kubernetes.GitPrivateKey,
+				config.Kubernetes.ImagePullSecrets,
 				extraEnv...,
 			)
 			jobClient := clientSet.BatchV1().Jobs(config.Kubernetes.Namespace)
