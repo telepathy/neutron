@@ -245,6 +245,21 @@ func main() {
 		})
 	})
 
+	r.POST("/api/report/:jobName", func(c *gin.Context) {
+		jobName := c.Param("jobName")
+		var status internal.JobStatus
+		if err := c.ShouldBindJSON(&status); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		err := repo.UpdateJobStatus(jobName, status)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
 	r.POST("/webhook/:id", func(c *gin.Context) {
 		id := c.Param("id")
 		webhookConfig := repo.GetWebhookConfig(id)

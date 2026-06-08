@@ -10,7 +10,19 @@ import (
 func main() {
 	runnerConfig := getConfig()
 	skipTLS := os.Getenv("SKIP_TLS_VERIFY") == "true"
-	reporter := NewGitlabReporter(runnerConfig, skipTLS)
+
+	// Create reporters
+	gitlabReporter := NewGitlabReporter(runnerConfig, skipTLS)
+	reporters := []model.Reporter{gitlabReporter}
+
+	// Add Neutron reporter if API URL is set
+	neutronApiUrl := os.Getenv("NEUTRON_API_URL")
+	if neutronApiUrl != "" {
+		neutronReporter := NewNeutronReporter(neutronApiUrl, runnerConfig.JobName)
+		reporters = append(reporters, neutronReporter)
+	}
+
+	reporter := NewCompositeReporter(reporters...)
 	runner := service.NewRunner("/repo", runnerConfig.Trigger, runnerConfig.JobName, reporter)
 	runner.Run()
 }

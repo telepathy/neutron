@@ -9,7 +9,18 @@ import (
 
 func main() {
 	runnerConfig := getConfig()
-	reporter := NewNoOpReporter()
+
+	// Create reporters
+	reporters := []model.Reporter{NewNoOpReporter()}
+
+	// Add Neutron reporter if API URL is set
+	neutronApiUrl := os.Getenv("NEUTRON_API_URL")
+	if neutronApiUrl != "" {
+		neutronReporter := NewNeutronReporter(neutronApiUrl, runnerConfig.JobName)
+		reporters = append(reporters, neutronReporter)
+	}
+
+	reporter := NewCompositeReporter(reporters...)
 	runner := service.NewRunner("/repo", runnerConfig.Trigger, runnerConfig.JobName, reporter)
 	runner.Run()
 }
