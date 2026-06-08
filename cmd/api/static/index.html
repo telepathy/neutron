@@ -180,9 +180,9 @@
         appConfig.namespace = c.namespace || 'default';
     });
 
-    function buildLogUrl(podName) {
+    function buildLogUrl(podId) {
         if (!appConfig.logUrl) return '#';
-        return appConfig.logUrl.replace('{namespace}', encodeURIComponent(appConfig.namespace)).replace('{podId}', encodeURIComponent(podName));
+        return appConfig.logUrl.replace('{namespace}', encodeURIComponent(appConfig.namespace)).replace('{podId}', encodeURIComponent(podId));
     }
 
     function isPodLogExpired(podName) {
