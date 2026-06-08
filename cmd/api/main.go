@@ -80,6 +80,42 @@ func main() {
 	if v := os.Getenv("NEUTRON_CHECKOUT_IMAGE"); v != "" {
 		config.Kubernetes.CheckoutImage = v
 	}
+	if v := os.Getenv("NEUTRON_SKIP_TLS_VERIFY"); v == "true" {
+		for k, cb := range config.BaseConfig {
+			cb.SkipTLSVerify = true
+			config.BaseConfig[k] = cb
+		}
+	}
+	if v := os.Getenv("NEUTRON_GITLAB_URL"); v != "" {
+		cb := config.BaseConfig["GitLab"]
+		cb.Url = v
+		config.BaseConfig["GitLab"] = cb
+	}
+	if v := os.Getenv("NEUTRON_GITLAB_TOKEN"); v != "" {
+		cb := config.BaseConfig["GitLab"]
+		cb.Token = v
+		config.BaseConfig["GitLab"] = cb
+	}
+	if v := os.Getenv("NEUTRON_GITLAB_SKIP_TLS_VERIFY"); v == "true" {
+		cb := config.BaseConfig["GitLab"]
+		cb.SkipTLSVerify = true
+		config.BaseConfig["GitLab"] = cb
+	}
+	if v := os.Getenv("NEUTRON_CODEUP_URL"); v != "" {
+		cb := config.BaseConfig["Codeup"]
+		cb.Url = v
+		config.BaseConfig["Codeup"] = cb
+	}
+	if v := os.Getenv("NEUTRON_CODEUP_TOKEN"); v != "" {
+		cb := config.BaseConfig["Codeup"]
+		cb.Token = v
+		config.BaseConfig["Codeup"] = cb
+	}
+	if v := os.Getenv("NEUTRON_CODEUP_SKIP_TLS_VERIFY"); v == "true" {
+		cb := config.BaseConfig["Codeup"]
+		cb.SkipTLSVerify = true
+		config.BaseConfig["Codeup"] = cb
+	}
 	repo := internal.NewRepository(config)
 
 	kubeConfig, err := rest.InClusterConfig()
