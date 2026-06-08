@@ -55,7 +55,7 @@ func (r *Repository) Close() {
 
 func (r *Repository) GetWebhookConfig(id string) PipelineProject {
 	var webhookConfig PipelineProject
-	row, err := r.db.Query("SELECT webhook_type,id,repo_url FROM project WHERE id=?", id)
+	row, err := r.db.Query("SELECT webhook_type,id,repo_url FROM neutron_project WHERE id=?", id)
 	if err != nil {
 		return webhookConfig
 	}
@@ -68,12 +68,12 @@ func (r *Repository) GetWebhookConfig(id string) PipelineProject {
 }
 
 func (r *Repository) AddWebhookConfig(p PipelineProject) error {
-	_, err := r.db.Exec("INSERT INTO project(id, webhook_type, repo_url) VALUES (?, ?, ?)", p.Id, p.WebhookType, p.RepoUrl)
+	_, err := r.db.Exec("INSERT INTO neutron_project(id, webhook_type, repo_url) VALUES (?, ?, ?)", p.Id, p.WebhookType, p.RepoUrl)
 	return err
 }
 
 func (r *Repository) AddJob(job PipelineJob) error {
-	_, err := r.db.Exec("INSERT INTO job(project_id, name, status) VALUES(?, ?, ?)", job.ProjectId, job.Name, job.Status)
+	_, err := r.db.Exec("INSERT INTO neutron_job(project_id, name, status) VALUES(?, ?, ?)", job.ProjectId, job.Name, job.Status)
 	return err
 }
 
@@ -82,12 +82,12 @@ func (r *Repository) UpdateJobStatus(jobName string, status JobStatus) error {
 	if err != nil {
 		return err
 	}
-	_, err = r.db.Exec("UPDATE job SET status=? WHERE name=?", string(statusBytes), jobName)
+	_, err = r.db.Exec("UPDATE neutron_job SET status=? WHERE name=?", string(statusBytes), jobName)
 	return err
 }
 
 func (r *Repository) GetJobStatus(jobName string) (JobStatus, error) {
-	row, err := r.db.Query("SELECT status FROM job WHERE name=?", jobName)
+	row, err := r.db.Query("SELECT status FROM neutron_job WHERE name=?", jobName)
 	if err != nil {
 		return JobStatus{}, err
 	}
