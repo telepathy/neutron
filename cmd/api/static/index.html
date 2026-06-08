@@ -510,11 +510,8 @@
                     app.innerHTML = '<p class="page-title">Error</p><p>' + escHtml(data.error) + '</p>';
                     return;
                 }
-                if (data.source === 'database') {
-                    renderStatusSolid(jobName, data.status, data.pods || []);
-                } else {
-                    renderStatusLive(data.job, data.pods);
-                }
+                // Always use renderStatusLive since we now always have job and pods
+                renderStatusLive(data.job, data.pods, data.status);
             })
             .catch(function(err) {
                 app.innerHTML = '<p class="page-title">Error</p><p>' + escHtml(String(err)) + '</p>';
@@ -550,10 +547,20 @@
             '</div>';
     }
 
-    function renderStatusLive(job, podsData) {
-        var ann = job.metadata && job.metadata.annotations ? job.metadata.annotations : {};
-        var st = job.status || {};
+    function renderStatusLive(job, podsData, dbStatus) {
+        var ann = job && job.metadata && job.metadata.annotations ? job.metadata.annotations : {};
+        var st = job ? (job.status || {}) : {};
         var items = podsData && podsData.items ? podsData.items : [];
+
+        // Use database status if available, otherwise derive from K8s
+        var status = dbStatus || {};
+        var active = status.Active || st.Active || 0;
+        var succeeded = status.Succeeded || st.Succeeded || 0;
+        var failed = status.Failed || st.Failed || 0;
+        var webhookType = status.WebhookType || ann.sourceType || '';
+        var triggerType = status.TriggerType || ann.triggerType || '';
+        var repoUrl = status.RepoUrl || ann.gitPath || '';
+        var projectUrl = status.ProjectUrl || ann.sourceLink || '#';
 
         var podsHtml = '';
         for (var i = 0; i < items.length; i++) {
@@ -569,16 +576,16 @@
         }
 
         app.innerHTML =
-            '<p class="page-title">Job &mdash; <b>' + escHtml(job.metadata ? job.metadata.name : '') + '</b></p>' +
+            '<p class="page-title">Job &mdash; <b>' + escHtml(job && job.metadata ? job.metadata.name : '') + '</b></p>' +
             '<div class="card">' +
                 '<div class="meta">' +
-                    '<div>A <b>' + escHtml(ann.sourceType || '') + '</b> &rarr; <b>' + escHtml(ann.triggerType || '') + '</b> pipeline</div>' +
-                    '<div><a target="_blank" href="' + escAttr(ann.sourceLink || '#') + '">' + escHtml(ann.gitPath || '') + '</a></div>' +
+                    '<div>A <b>' + escHtml(webhookType) + '</b> &rarr; <b>' + escHtml(triggerType) + '</b> pipeline</div>' +
+                    '<div><a target="_blank" href="' + escAttr(projectUrl) + '">' + escHtml(repoUrl) + '</a></div>' +
                 '</div>' +
                 '<div class="stat-row">' +
-                    '<div class="stat">Active: <b>' + (st.Active || 0) + '</b></div>' +
-                    '<div class="stat">Succeeded: <b>' + (st.Succeeded || 0) + '</b></div>' +
-                    '<div class="stat">Failed: <b>' + (st.Failed || 0) + '</b></div>' +
+                    '<div class="stat">Active: <b>' + active + '</b></div>' +
+                    '<div class="stat">Succeeded: <b>' + succeeded + '</b></div>' +
+                    '<div class="stat">Failed: <b>' + failed + '</b></div>' +
                 '</div>' +
                 (items.length > 0 ?
                     '<table><thead><tr><th>Pod</th><th>Status</th></tr></thead><tbody>' + podsHtml + '</tbody></table>'

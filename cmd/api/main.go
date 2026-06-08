@@ -211,15 +211,8 @@ func main() {
 
 	r.GET("/api/status/:jobName", func(c *gin.Context) {
 		jobName := c.Param("jobName")
-		status, err := repo.GetJobStatus(jobName)
-		if err == nil && (status.Active > 0 || status.Succeeded > 0 || status.Failed > 0) {
-			c.JSON(http.StatusOK, gin.H{
-				"jobName": jobName,
-				"status":  status,
-				"source":  "database",
-			})
-			return
-		}
+
+		// Always try to get job and pods from K8s
 		jobClient := clientSet.BatchV1().Jobs(config.Kubernetes.Namespace)
 		job, err := jobClient.Get(context.Background(), jobName, metav1.GetOptions{})
 		if err != nil {
@@ -235,6 +228,19 @@ func main() {
 		})
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Check if we have status in database
+		status, dbErr := repo.GetJobStatus(jobName)
+		if dbErr == nil && (status.Active > 0 || status.Succeeded > 0 || status.Failed > 0) {
+			c.JSON(http.StatusOK, gin.H{
+				"jobName": jobName,
+				"status":  status,
+				"job":     job,
+				"pods":    pods,
+				"source":  "database",
+			})
 			return
 		}
 
@@ -260,6 +266,7 @@ func main() {
 
 		c.JSON(http.StatusOK, gin.H{
 			"jobName": jobName,
+			"status":  k8sStatus,
 			"job":     job,
 			"pods":    pods,
 			"source":  "kubernetes",
