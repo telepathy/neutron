@@ -41,7 +41,7 @@ stringData:
     port: 8888
     database: "root:root@tcp(mysql.default.svc.cluster.local:3306)/neutron?charset=utf8mb4&parseTime=True&loc=Local"
     salt: "change-me"
-    # log_url: "https://log.internal.com/view?namespace={namespace}&pod={podName}"
+    # log_url: "https://log.internal.com/view?namespace={namespace}&pod={podId}"
     codebase:
       GitLab:
         url: "http://gitlab.default.svc.cluster.local"
