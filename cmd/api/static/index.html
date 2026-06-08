@@ -379,16 +379,16 @@
             var status = {};
             try { status = JSON.parse(job.Status || '{}'); } catch(e) {}
             var statusHtml = '';
-            if (status.Active > 0) {
+            if (status.active > 0) {
                 statusHtml = '<span style="color:#2563eb">Running</span>';
-            } else if (status.Failed > 0) {
+            } else if (status.failed > 0) {
                 statusHtml = '<span style="color:#dc2626">Failed</span>';
-            } else if (status.Succeeded > 0) {
+            } else if (status.succeeded > 0) {
                 statusHtml = '<span style="color:#16a34a">Success</span>';
             } else {
                 statusHtml = '<span style="color:#999">Unknown</span>';
             }
-            html += '<tr><td><a href="#/status/' + escAttr(job.Name) + '">' + escHtml(job.Name) + '</a></td><td>' + statusHtml + '</td><td>' + escHtml(status.TriggerType || '-') + '</td><td><a href="#/status/' + escAttr(job.Name) + '" class="btn btn-outline" style="padding:4px 12px;font-size:1.2rem">Detail</a></td></tr>';
+            html += '<tr><td><a href="#/status/' + escAttr(job.Name) + '">' + escHtml(job.Name) + '</a></td><td>' + statusHtml + '</td><td>' + escHtml(status.trigger_type || '-') + '</td><td><a href="#/status/' + escAttr(job.Name) + '" class="btn btn-outline" style="padding:4px 12px;font-size:1.2rem">Detail</a></td></tr>';
         }
         html += '</tbody></table>';
         el.innerHTML = html;
@@ -553,14 +553,15 @@
         var items = podsData && podsData.items ? podsData.items : [];
 
         // Use database status if available, otherwise derive from K8s
+        // Note: dbStatus uses lowercase keys (from JSON), K8s uses PascalCase
         var status = dbStatus || {};
-        var active = status.Active || st.Active || 0;
-        var succeeded = status.Succeeded || st.Succeeded || 0;
-        var failed = status.Failed || st.Failed || 0;
-        var webhookType = status.WebhookType || ann.sourceType || '';
-        var triggerType = status.TriggerType || ann.triggerType || '';
-        var repoUrl = status.RepoUrl || ann.gitPath || '';
-        var projectUrl = status.ProjectUrl || ann.sourceLink || '#';
+        var active = status.active || st.Active || 0;
+        var succeeded = status.succeeded || st.Succeeded || 0;
+        var failed = status.failed || st.Failed || 0;
+        var webhookType = status.webhook_type || ann.sourceType || '';
+        var triggerType = status.trigger_type || ann.triggerType || '';
+        var repoUrl = status.repo_url || ann.gitPath || '';
+        var projectUrl = status.project_url || ann.sourceLink || '#';
 
         var podsHtml = '';
         for (var i = 0; i < items.length; i++) {
