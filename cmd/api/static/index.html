@@ -229,6 +229,8 @@
             renderRegisterInfo();
         } else if (hash.startsWith('#/status/')) {
             renderStatus(hash.slice('#/status/'.length));
+        } else if (hash.startsWith('#/project/')) {
+            renderProjectJobs(hash.slice('#/project/'.length));
         } else {
             renderProjects();
         }
@@ -307,14 +309,63 @@
             return;
         }
 
-        var html = '<table><thead><tr><th>Type</th><th>Repository</th><th>Webhook ID</th></tr></thead><tbody>';
+        var html = '<table><thead><tr><th>Type</th><th>Repository</th><th>Actions</th></tr></thead><tbody>';
         for (var i = 0; i < projects.length; i++) {
             var p = projects[i];
             var httpUrl = sshToHttp(p.RepoUrl, p.WebhookType);
             var repoHtml = httpUrl
                 ? '<a target="_blank" href="' + escAttr(httpUrl) + '">' + escHtml(p.RepoUrl) + '</a>'
                 : escHtml(p.RepoUrl);
-            html += '<tr><td>' + escHtml(p.WebhookType) + '</td><td>' + repoHtml + '</td><td><code style="font-size:1.2rem;color:#999">' + escHtml(p.Id) + '</code></td></tr>';
+            html += '<tr><td>' + escHtml(p.WebhookType) + '</td><td>' + repoHtml + '</td><td><a href="#/project/' + escAttr(p.Id) + '" class="btn btn-outline" style="padding:6px 16px;font-size:1.3rem">View</a></td></tr>';
+        }
+        html += '</tbody></table>';
+        el.innerHTML = html;
+    }
+
+    // --- Project Jobs ---
+    function renderProjectJobs(projectId) {
+        app.innerHTML =
+            '<p class="page-title">Pipeline history for <b>' + escHtml(projectId) + '</b></p>' +
+            '<div style="margin-bottom:16px"><a href="#/" class="btn btn-outline" style="padding:6px 16px;font-size:1.3rem">← Back to Projects</a></div>' +
+            '<div id="jobsList"><p style="color:#999">Loading...</p></div>';
+
+        fetch('/api/projects/' + encodeURIComponent(projectId) + '/jobs')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    document.getElementById('jobsList').innerHTML = '<p style="color:#c00">' + escHtml(data.error) + '</p>';
+                    return;
+                }
+                renderProjectJobsList(data.jobs || []);
+            })
+            .catch(function(err) {
+                document.getElementById('jobsList').innerHTML = '<p style="color:#c00">Failed to load: ' + escHtml(String(err)) + '</p>';
+            });
+    }
+
+    function renderProjectJobsList(jobs) {
+        var el = document.getElementById('jobsList');
+        if (!jobs || jobs.length === 0) {
+            el.innerHTML = '<p style="color:#999">No pipeline runs in the last 7 days.</p>';
+            return;
+        }
+
+        var html = '<table><thead><tr><th>Job Name</th><th>Status</th><th>Trigger</th><th>Actions</th></tr></thead><tbody>';
+        for (var i = 0; i < jobs.length; i++) {
+            var job = jobs[i];
+            var status = {};
+            try { status = JSON.parse(job.Status || '{}'); } catch(e) {}
+            var statusHtml = '';
+            if (status.Active > 0) {
+                statusHtml = '<span style="color:#2563eb">Running</span>';
+            } else if (status.Failed > 0) {
+                statusHtml = '<span style="color:#dc2626">Failed</span>';
+            } else if (status.Succeeded > 0) {
+                statusHtml = '<span style="color:#16a34a">Success</span>';
+            } else {
+                statusHtml = '<span style="color:#999">Unknown</span>';
+            }
+            html += '<tr><td><a href="#/status/' + escAttr(job.Name) + '">' + escHtml(job.Name) + '</a></td><td>' + statusHtml + '</td><td>' + escHtml(status.TriggerType || '-') + '</td><td><a href="#/status/' + escAttr(job.Name) + '" class="btn btn-outline" style="padding:4px 12px;font-size:1.2rem">Detail</a></td></tr>';
         }
         html += '</tbody></table>';
         el.innerHTML = html;

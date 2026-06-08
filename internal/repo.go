@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"neutron/internal/model"
+	"time"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -48,7 +49,7 @@ type Repository struct {
 
 func NewRepository(config model.Config) *Repository {
 	db, err := gorm.Open(mysql.Open(config.Database), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: logger.Default.LogMode(logger.Warn),
 	})
 	if err != nil {
 		log.Fatalf("cannot connect to database: %v", err)
@@ -114,4 +115,11 @@ func (r *Repository) GetJobStatus(jobName string) (JobStatus, error) {
 		return JobStatus{}, err
 	}
 	return status, nil
+}
+
+func (r *Repository) ListProjectJobs(projectId string, days int) ([]PipelineJob, error) {
+	var jobs []PipelineJob
+	err := r.db.Where("project_id = ? AND name >= ?", projectId, time.Now().AddDate(0, 0, -days).Format("20060102")).
+		Order("id DESC").Find(&jobs).Error
+	return jobs, err
 }

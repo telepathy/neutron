@@ -179,6 +179,16 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"projects": projects})
 	})
 
+	r.GET("/api/projects/:id/jobs", func(c *gin.Context) {
+		id := c.Param("id")
+		jobs, err := repo.ListProjectJobs(id, 7)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"jobs": jobs})
+	})
+
 	r.POST("/api/register", func(c *gin.Context) {
 		p := internal.PipelineProject{
 			Id:          uuid.New().String(),
