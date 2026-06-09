@@ -34,6 +34,34 @@ func NewNeutron(apiUrl string, jobName string, triggerType string, webhookType s
 	}
 }
 
+// RegisterPod reports this runner's pod info to the Neutron API server at startup.
+// This ensures pod info is persisted before the pod gets cleaned up.
+func (r *Neutron) RegisterPod(podName string, namespace string) {
+	payload := map[string]string{
+		"pod_name":  podName,
+		"namespace": namespace,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("Failed to marshal pod info: %v", err)
+		return
+	}
+
+	url := fmt.Sprintf("%s/api/report/%s/pod", r.apiUrl, r.jobName)
+	resp, err := r.client.Post(url, "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		log.Printf("Failed to register pod with Neutron API: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Neutron API returned status %d for pod registration", resp.StatusCode)
+	} else {
+		log.Printf("Pod %s registered with Neutron API", podName)
+	}
+}
+
 func (r *Neutron) Report(jobName string, stepName string, status model.StepResult, description string) {
 	payload := map[string]interface{}{
 		"webhook_type": r.webhookType,

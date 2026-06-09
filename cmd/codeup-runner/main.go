@@ -19,6 +19,7 @@ func main() {
 	// Composite: NoOp + Neutron
 	noopReporter := NewNoOpReporter()
 	neutronReporter := reporter.NewNeutron(apiUrl, fullJobName, triggerType, webhookType, skipTLS)
+	neutronReporter.RegisterPod(os.Getenv("POD_NAME"), os.Getenv("POD_NAMESPACE"))
 	composite := reporter.NewComposite(noopReporter, neutronReporter)
 
 	runner := service.NewRunner("/repo", triggerType, jobName, composite)

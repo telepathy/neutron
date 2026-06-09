@@ -25,6 +25,7 @@ func main() {
 
 	// Composite: GitLab + Neutron
 	neutronReporter := reporter.NewNeutron(apiUrl, fullJobName, triggerType, webhookType, skipTLS)
+	neutronReporter.RegisterPod(os.Getenv("POD_NAME"), os.Getenv("POD_NAMESPACE"))
 	composite := reporter.NewComposite(gitlabReporter, neutronReporter)
 
 	runner := service.NewRunner("/repo", triggerType, jobName, composite)

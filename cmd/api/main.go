@@ -322,6 +322,54 @@ func main() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		// Mark job completed when runner reports a terminal state
+		if status.Succeeded > 0 || status.Failed > 0 {
+			_ = repo.MarkJobCompleted(jobName)
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	r.POST("/api/report/:jobName/pod", func(c *gin.Context) {
+		jobName := c.Param("jobName")
+
+		var req struct {
+			PodName   string `json:"pod_name"`
+			Namespace string `json:"namespace"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Look up job in database
+		dbJob, dbErr := repo.GetJobByName(jobName)
+		if dbErr != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
+			return
+		}
+
+		// Get pod details from K8s
+		podClient := clientSet.CoreV1().Pods(req.Namespace)
+		pod, err := podClient.Get(context.Background(), req.PodName, metav1.GetOptions{})
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("pod not found: %v", err)})
+			return
+		}
+
+		// Upsert pod info
+		var existingPod internal.PipelinePod
+		result := repo.DB().Where("job_id = ? AND pod_uid = ?", dbJob.Id, string(pod.UID)).First(&existingPod)
+		if result.Error != nil {
+			_ = repo.AddPod(internal.PipelinePod{
+				JobId:   dbJob.Id,
+				PodName: pod.Name,
+				PodUid:  string(pod.UID),
+				Phase:   string(pod.Status.Phase),
+			})
+		} else {
+			_ = repo.UpdatePodStatus(string(pod.UID), string(pod.Status.Phase))
+		}
+
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 

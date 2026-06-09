@@ -66,6 +66,12 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 		{Name: "GIT_PRIVATE_KEY", Value: l.RunnerConfig.GitPrivateKey},
 		{Name: "PIPELINE_URL", Value: fmt.Sprintf("%s/#/status/%s", neutronHost, fullJobName)},
 		{Name: "NEUTRON_API_URL", Value: fmt.Sprintf("http://neutron-api.%s.svc.cluster.local:8888", l.Namespace)},
+		{Name: "POD_NAME", ValueFrom: &v1.EnvVarSource{
+			FieldRef: &v1.ObjectFieldSelector{FieldPath: "metadata.name"},
+		}},
+		{Name: "POD_NAMESPACE", ValueFrom: &v1.EnvVarSource{
+			FieldRef: &v1.ObjectFieldSelector{FieldPath: "metadata.namespace"},
+		}},
 	}
 	env = append(env, l.ExtraEnv...)
 
