@@ -322,6 +322,14 @@ func main() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		// Sync pod phase from K8s on every report
+		if dbJob, err := repo.GetJobByName(jobName); err == nil {
+			for _, pod := range dbJob.Pods {
+				if k8sPod, err := clientSet.CoreV1().Pods(config.Kubernetes.Namespace).Get(context.Background(), pod.PodName, metav1.GetOptions{}); err == nil {
+					_ = repo.UpdatePodStatus(pod.PodUid, string(k8sPod.Status.Phase))
+				}
+			}
+		}
 		// Mark job completed when runner reports a terminal state
 		if status.Succeeded > 0 || status.Failed > 0 {
 			_ = repo.MarkJobCompleted(jobName)
