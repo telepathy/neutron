@@ -322,17 +322,49 @@ func main() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		// Sync pod phase from K8s on every report
-		if dbJob, err := repo.GetJobByName(jobName); err == nil {
-			for _, pod := range dbJob.Pods {
-				if k8sPod, err := clientSet.CoreV1().Pods(config.Kubernetes.Namespace).Get(context.Background(), pod.PodName, metav1.GetOptions{}); err == nil {
-					_ = repo.UpdatePodStatus(pod.PodUid, string(k8sPod.Status.Phase))
+		// Sync pod phase from K8s on every non-terminal report
+		if status.Succeeded == 0 && status.Failed == 0 {
+			if dbJob, err := repo.GetJobByName(jobName); err == nil {
+				for _, pod := range dbJob.Pods {
+					if k8sPod, err := clientSet.CoreV1().Pods(config.Kubernetes.Namespace).Get(context.Background(), pod.PodName, metav1.GetOptions{}); err == nil {
+						_ = repo.UpdatePodStatus(pod.PodUid, string(k8sPod.Status.Phase))
+					}
 				}
 			}
 		}
-		// Mark job completed when runner reports a terminal state
+		// Mark job completed and asynchronously sync final pod phase
 		if status.Succeeded > 0 || status.Failed > 0 {
-			_ = repo.MarkJobCompleted(jobName)
+			finalPhase := "Succeeded"
+			if status.Failed > 0 {
+				finalPhase = "Failed"
+			}
+			go func() {
+				// Retry until pod reaches terminal phase or is gone
+				for i := 0; i < 5; i++ {
+					time.Sleep(2 * time.Second)
+					if dbJob, err := repo.GetJobByName(jobName); err == nil {
+						allSynced := true
+						for _, pod := range dbJob.Pods {
+							k8sPod, err := clientSet.CoreV1().Pods(config.Kubernetes.Namespace).Get(context.Background(), pod.PodName, metav1.GetOptions{})
+							if err != nil {
+								// Pod gone — use runner's reported phase
+								_ = repo.UpdatePodStatus(pod.PodUid, finalPhase)
+								continue
+							}
+							phase := string(k8sPod.Status.Phase)
+							if phase == "Succeeded" || phase == "Failed" {
+								_ = repo.UpdatePodStatus(pod.PodUid, phase)
+							} else {
+								allSynced = false
+							}
+						}
+						if allSynced {
+							break
+						}
+					}
+				}
+				_ = repo.MarkJobCompleted(jobName)
+			}()
 		}
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
