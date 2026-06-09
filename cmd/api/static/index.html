@@ -431,13 +431,21 @@
 
     // --- Register ---
     function renderRegister() {
+        var optionsHtml = '';
+        var types = Object.keys(appConfig.codebaseUrls);
+        for (var i = 0; i < types.length; i++) {
+            optionsHtml += '<option value="' + escAttr(types[i]) + '">' + escHtml(types[i]) + '</option>';
+        }
+        if (!optionsHtml) {
+            optionsHtml = '<option value="GitLab">GitLab</option><option value="Codeup">Codeup</option>';
+        }
         app.innerHTML =
             '<div class="form-wrap">' +
                 '<h3>Create new pipeline</h3>' +
                 '<form id="registerForm">' +
                     '<label for="webhookType">Type</label>' +
                     '<select id="webhookType" name="webhookType">' +
-                        '<option value="GitLab">GitLab</option>' +
+                        optionsHtml +
                     '</select>' +
                     '<label for="repoUrl">Repo URL (SSH protocol only)</label>' +
                     '<input type="text" id="repoUrl" name="repoUrl" placeholder="git@gitlab.example.com:group/project.git">' +
