@@ -421,11 +421,7 @@ func main() {
 			return
 		}
 
-		// auto-detect platform: X-Codeup-Event header present → Codeup, otherwise use registered type
 		platform := webhookConfig.WebhookType
-		if c.GetHeader("X-Codeup-Event") != "" {
-			platform = "Codeup"
-		}
 
 		var pipeline model.Pipeline
 		var pTrigger string
@@ -471,9 +467,13 @@ func main() {
 			}
 			pTrigger = p.Trigger
 			pCodeSha = p.CodeSha
+			pReportSha = p.ReportSha
 			pProjectId = p.Request.Project.Id
 			if pProjectId == 0 {
 				pProjectId = p.Request.ProjectId
+			}
+			if pProjectId == 0 {
+				pProjectId = p.Request.Attributes.ProjectId
 			}
 		default:
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported platform: %s", platform)})

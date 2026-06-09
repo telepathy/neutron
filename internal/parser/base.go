@@ -17,13 +17,14 @@ type FileResponse struct {
 }
 
 type Base struct {
-	AccessApiPath string
-	AccessToken   string
-	Client        *http.Client
-	CodeSha       string
-	ReportSha     string
-	TargetBranch  string
-	Trigger       string
+	AccessApiPath  string
+	AccessToken    string
+	AuthHeaderName string // e.g. "PRIVATE-TOKEN" (GitLab), "x-yunxiao-token" (Codeup)
+	Client         *http.Client
+	CodeSha        string
+	ReportSha      string
+	TargetBranch   string
+	Trigger        string
 }
 
 func (b *Base) Parse() (model.Pipeline, error) {
@@ -34,7 +35,11 @@ func (b *Base) Parse() (model.Pipeline, error) {
 	query := req.URL.Query()
 	query.Add("ref", b.CodeSha)
 	req.URL.RawQuery = query.Encode()
-	req.Header.Add("PRIVATE-TOKEN", b.AccessToken)
+	authHeader := b.AuthHeaderName
+	if authHeader == "" {
+		authHeader = "PRIVATE-TOKEN"
+	}
+	req.Header.Add(authHeader, b.AccessToken)
 	res, err := b.Client.Do(req)
 	if err != nil {
 		return model.Pipeline{}, err
