@@ -19,10 +19,11 @@ type Launcher struct {
 	SshKeyName       string
 	ImagePullSecrets []string
 	Platform         string
+	PodApiUrl        string   // override NEUTRON_API_URL for pods (local dev)
 	ExtraEnv         []v1.EnvVar // platform-specific env vars (e.g. TARGET_BRANCH for GitLab MR)
 }
 
-func NewLauncher(namespace string, runnerConfig model.RunnerConfig, initImage string, checkoutImage string, baseImage string, keyName string, imagePullSecrets []string, platform string, extraEnv ...v1.EnvVar) *Launcher {
+func NewLauncher(namespace string, runnerConfig model.RunnerConfig, initImage string, checkoutImage string, baseImage string, keyName string, imagePullSecrets []string, platform string, podApiUrl string, extraEnv ...v1.EnvVar) *Launcher {
 	return &Launcher{
 		Namespace:        namespace,
 		RunnerConfig:     runnerConfig,
@@ -32,6 +33,7 @@ func NewLauncher(namespace string, runnerConfig model.RunnerConfig, initImage st
 		SshKeyName:       keyName,
 		ImagePullSecrets: imagePullSecrets,
 		Platform:         platform,
+		PodApiUrl:        podApiUrl,
 		ExtraEnv:         extraEnv,
 	}
 }
@@ -65,7 +67,7 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 		{Name: "GIT_REPO_URL", Value: l.RunnerConfig.GitRepoUrl},
 		{Name: "GIT_PRIVATE_KEY", Value: l.RunnerConfig.GitPrivateKey},
 		{Name: "PIPELINE_URL", Value: fmt.Sprintf("%s/#/status/%s", neutronHost, fullJobName)},
-		{Name: "NEUTRON_API_URL", Value: fmt.Sprintf("http://neutron-api.%s.svc.cluster.local:8888", l.Namespace)},
+		{Name: "NEUTRON_API_URL", Value: l.podApiUrl()},
 		{Name: "POD_NAME", ValueFrom: &v1.EnvVarSource{
 			FieldRef: &v1.ObjectFieldSelector{FieldPath: "metadata.name"},
 		}},
@@ -154,6 +156,13 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 		},
 	}
 	return job
+}
+
+func (l *Launcher) podApiUrl() string {
+	if l.PodApiUrl != "" {
+		return l.PodApiUrl
+	}
+	return fmt.Sprintf("http://neutron-api.%s.svc.cluster.local:8888", l.Namespace)
 }
 
 func int32Ptr(i int32) *int32 {

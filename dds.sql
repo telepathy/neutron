@@ -20,3 +20,11 @@ create table if not exists neutron_pod(
     phase varchar(50),
     index idx_job_id (job_id)
 );
+create table if not exists neutron_notify(
+    id bigint primary key auto_increment,
+    project_id char(36) not null,
+    user_id varchar(100) not null,
+    created_at timestamp null,
+    index idx_project_id (project_id),
+    unique index idx_project_user (project_id, user_id)
+);

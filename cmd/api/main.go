@@ -32,6 +32,34 @@ import (
 //go:embed static/*
 var staticFs embed.FS
 
+func sendNotify(cfg model.NotifyConfig, userId string, content string) {
+	if cfg.Url == "" {
+		return
+	}
+	body, _ := json.Marshal(map[string]string{
+		"user_id": userId,
+		"content": content,
+	})
+	req, err := http.NewRequest("POST", cfg.Url, strings.NewReader(string(body)))
+	if err != nil {
+		log.Printf("notify: failed to create request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if cfg.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+cfg.Token)
+	}
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		log.Printf("notify: failed to send to %s: %v", userId, err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		log.Printf("notify: API returned %d for user %s", resp.StatusCode, userId)
+	}
+}
+
 func main() {
 	var config model.Config
 	configPath := os.Getenv("NEUTRON_CONFIG")
@@ -125,6 +153,15 @@ func main() {
 		cb.SkipTLSVerify = true
 		config.BaseConfig["Codeup"] = cb
 	}
+	if v := os.Getenv("NEUTRON_NOTIFY_URL"); v != "" {
+		config.Notify.Url = v
+	}
+	if v := os.Getenv("NEUTRON_NOTIFY_TOKEN"); v != "" {
+		config.Notify.Token = v
+	}
+	if v := os.Getenv("NEUTRON_POD_API_URL"); v != "" {
+		config.Kubernetes.PodApiUrl = v
+	}
 	repo := internal.NewRepository(config)
 
 	kubeConfig, err := rest.InClusterConfig()
@@ -188,6 +225,53 @@ func main() {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"jobs": jobs})
+	})
+
+	r.GET("/api/projects/:id/recipients", func(c *gin.Context) {
+		id := c.Param("id")
+		recipients, err := repo.ListNotifyRecipients(id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"recipients": recipients})
+	})
+
+	r.POST("/api/projects/:id/recipients", func(c *gin.Context) {
+		id := c.Param("id")
+		var req struct {
+			UserId string `json:"user_id"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.UserId == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
+			return
+		}
+		// Check duplicate
+		var existing internal.NotifyRecipient
+		if err := repo.DB().Where("project_id = ? AND user_id = ?", id, req.UserId).First(&existing).Error; err == nil {
+			c.JSON(http.StatusConflict, gin.H{"error": "Recipient already exists"})
+			return
+		}
+		recipient := internal.NotifyRecipient{ProjectId: id, UserId: req.UserId}
+		if err := repo.AddNotifyRecipient(recipient); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"id": recipient.Id, "project_id": id, "user_id": req.UserId})
+	})
+
+	r.DELETE("/api/projects/:id/recipients/:rid", func(c *gin.Context) {
+		id := c.Param("id")
+		rid, err := strconv.ParseInt(c.Param("rid"), 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid recipient id"})
+			return
+		}
+		if err := repo.RemoveNotifyRecipient(id, rid); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 
 	r.POST("/api/register", func(c *gin.Context) {
@@ -334,6 +418,20 @@ func main() {
 		}
 		// Mark job completed and asynchronously sync final pod phase
 		if status.Succeeded > 0 || status.Failed > 0 {
+			// Notify recipients: pipeline completed
+			if dbJob, err := repo.GetJobByName(jobName); err == nil {
+				if recipients, err := repo.ListNotifyRecipients(dbJob.ProjectId); err == nil {
+					state := "succeeded"
+					if status.Failed > 0 {
+						state = "failed"
+					}
+					statusUrl := fmt.Sprintf("%s/#/status/%s", config.Host, jobName)
+					content := fmt.Sprintf("Pipeline %s (%s), view: %s", state, jobName, statusUrl)
+					for _, r := range recipients {
+						go sendNotify(config.Notify, r.UserId, content)
+					}
+				}
+			}
 			finalPhase := "Succeeded"
 			if status.Failed > 0 {
 				finalPhase = "Failed"
@@ -523,6 +621,7 @@ func main() {
 				config.Kubernetes.GitPrivateKey,
 				config.Kubernetes.ImagePullSecrets,
 				platform,
+				config.Kubernetes.PodApiUrl,
 				extraEnv...,
 			)
 			jobClient := clientSet.BatchV1().Jobs(config.Kubernetes.Namespace)
@@ -542,6 +641,17 @@ func main() {
 				return
 			}
 			jobs = append(jobs, createdJob.Name)
+		}
+
+		// Notify recipients: pipeline triggered
+		if len(jobs) > 0 {
+			if recipients, err := repo.ListNotifyRecipients(id); err == nil {
+				statusUrl := fmt.Sprintf("%s/#/status/%s", config.Host, jobs[0])
+				content := fmt.Sprintf("Pipeline triggered (%s %s), view: %s", webhookConfig.RepoUrl, pTrigger, statusUrl)
+				for _, r := range recipients {
+					go sendNotify(config.Notify, r.UserId, content)
+				}
+			}
 		}
 
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "pipeline": pipeline, "jobs": jobs})

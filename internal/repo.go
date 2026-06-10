@@ -48,6 +48,17 @@ func (PipelinePod) TableName() string {
 	return "neutron_pod"
 }
 
+type NotifyRecipient struct {
+	Id        int64      `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	ProjectId string     `gorm:"column:project_id;type:char(36);uniqueIndex:idx_project_user" json:"project_id"`
+	UserId    string     `gorm:"column:user_id;type:varchar(100);uniqueIndex:idx_project_user" json:"user_id"`
+	CreatedAt *time.Time `gorm:"column:created_at" json:"created_at"`
+}
+
+func (NotifyRecipient) TableName() string {
+	return "neutron_notify"
+}
+
 type JobStatus struct {
 	WebhookType string `json:"webhook_type"`
 	RepoUrl     string `json:"repo_url"`
@@ -72,7 +83,7 @@ func NewRepository(config model.Config) *Repository {
 	}
 
 	// Auto-migrate tables
-	if err := db.AutoMigrate(&PipelineProject{}, &PipelineJob{}, &PipelinePod{}); err != nil {
+	if err := db.AutoMigrate(&PipelineProject{}, &PipelineJob{}, &PipelinePod{}, &NotifyRecipient{}); err != nil {
 		log.Fatalf("failed to auto-migrate database: %v", err)
 	}
 
@@ -174,4 +185,18 @@ func (r *Repository) MarkJobCompleted(jobName string) error {
 			"completed":    true,
 			"completed_at": now,
 		}).Error
+}
+
+func (r *Repository) ListNotifyRecipients(projectId string) ([]NotifyRecipient, error) {
+	var recipients []NotifyRecipient
+	err := r.db.Where("project_id = ?", projectId).Order("id").Find(&recipients).Error
+	return recipients, err
+}
+
+func (r *Repository) AddNotifyRecipient(recipient NotifyRecipient) error {
+	return r.db.Create(&recipient).Error
+}
+
+func (r *Repository) RemoveNotifyRecipient(projectId string, id int64) error {
+	return r.db.Where("project_id = ? AND id = ?", projectId, id).Delete(&NotifyRecipient{}).Error
 }

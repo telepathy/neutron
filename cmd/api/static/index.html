@@ -89,8 +89,8 @@
 
         /* --- Card --- */
         .card {
-            background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;
-            padding: 24px; margin-bottom: 24px;
+            background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+            padding: 20px 24px; margin-bottom: 24px;
         }
 
         /* --- Meta rows --- */
@@ -152,6 +152,18 @@
         /* --- Page title --- */
         .page-title { font-size: 2.4rem; font-weight: 300; color: #222; margin-bottom: 24px; }
         .page-title b { color: #9b4dca; font-weight: 700; }
+
+        /* --- Tags --- */
+        .tag { display: inline-flex; align-items: center; background: #f5f3ff; color: #6d28d9; font-size: 1.2rem; font-weight: 600; padding: 3px 10px; border-radius: 6px; letter-spacing: .2px; }
+        .tag-add { display: inline-flex; align-items: center; gap: 2px; color: #9b4dca; font-size: 1.2rem; font-weight: 600; padding: 3px 10px; border-radius: 6px; border: 1px dashed #d8b4fe; cursor: pointer; transition: all .15s; background: transparent; }
+        .tag-add:hover { background: #f5f3ff; border-color: #9b4dca; }
+
+        /* --- Modal --- */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 200; display: flex; align-items: center; justify-content: center; }
+        .modal { background: #fff; border-radius: 8px; padding: 28px 32px; max-width: 440px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,.18); }
+        .modal h4 { margin-bottom: 16px; font-size: 1.8rem; }
+        .modal-input-row { display: flex; gap: 8px; margin-top: 16px; }
+        .modal-input-row input { flex: 1; margin: 0; }
 
         /* --- Responsive --- */
         @media (max-width: 640px) {
@@ -330,28 +342,41 @@
             '<div id="projectInfo"></div>' +
             '<div id="jobsList"><p style="color:#999">Loading...</p></div>';
 
-        // Fetch project info and jobs in parallel
         Promise.all([
             fetch('/api/projects').then(function(r) { return r.json(); }),
-            fetch('/api/projects/' + encodeURIComponent(projectId) + '/jobs').then(function(r) { return r.json(); })
+            fetch('/api/projects/' + encodeURIComponent(projectId) + '/jobs').then(function(r) { return r.json(); }),
+            fetch('/api/projects/' + encodeURIComponent(projectId) + '/recipients').then(function(r) { return r.json(); })
         ]).then(function(results) {
             var projects = results[0].projects || [];
             var project = null;
             for (var i = 0; i < projects.length; i++) {
-                if (projects[i].Id === projectId) {
-                    project = projects[i];
-                    break;
-                }
+                if (projects[i].Id === projectId) { project = projects[i]; break; }
             }
 
-            // Display project info
+            // Display project info + recipients tags
             var infoEl = document.getElementById('projectInfo');
             if (project) {
                 var httpUrl = sshToHttp(project.RepoUrl, project.WebhookType);
                 var repoHtml = httpUrl
                     ? '<a target="_blank" href="' + escAttr(httpUrl) + '">' + escHtml(project.RepoUrl) + '</a>'
                     : escHtml(project.RepoUrl);
-                infoEl.innerHTML = '<div class="card" style="margin-bottom:16px"><div class="meta"><div><b>' + escHtml(project.WebhookType) + '</b></div><div>' + repoHtml + '</div></div></div>';
+                var recipients = results[2].recipients || [];
+                var tagsHtml = '';
+                for (var i = 0; i < recipients.length; i++) {
+                    tagsHtml += '<span class="tag">' + escHtml(recipients[i].user_id) + '</span>';
+                }
+                tagsHtml += '<span class="tag-add" onclick="openRecipientsModal(\'' + escAttr(projectId) + '\')">+ Edit</span>';
+                infoEl.innerHTML =
+                    '<div class="card" style="margin-bottom:16px">' +
+                        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">' +
+                            '<span style="font-size:1.2rem;font-weight:600;color:#999;text-transform:uppercase;letter-spacing:.5px">' + escHtml(project.WebhookType) + '</span>' +
+                            '<span style="font-size:1.4rem;color:#606c76">' + repoHtml + '</span>' +
+                        '</div>' +
+                        '<div style="border-top:1px solid #f3f4f6;padding-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+                            '<span style="font-size:1.2rem;font-weight:600;color:#999;text-transform:uppercase;letter-spacing:.5px">Notify</span>' +
+                            '<div id="projectRecipientTags" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">' + tagsHtml + '</div>' +
+                        '</div>' +
+                    '</div>';
             }
 
             // Display jobs
@@ -364,6 +389,119 @@
         }).catch(function(err) {
             document.getElementById('jobsList').innerHTML = '<p style="color:#c00">Failed to load: ' + escHtml(String(err)) + '</p>';
         });
+    }
+
+    // --- Recipients Modal ---
+    function openRecipientsModal(projectId) {
+        // Overlay
+        var overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.id = 'recipientsModal';
+        overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+        var modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.innerHTML =
+            '<h4>Notification Recipients</h4>' +
+            '<div id="modalRecipientsList"><p style="color:#999;font-size:1.3rem">Loading...</p></div>' +
+            '<div class="modal-input-row">' +
+                '<input type="text" id="modalRecipientInput" placeholder="Enter user ID...">' +
+                '<button class="btn btn-outline" id="modalAddBtn" style="margin:0;padding:8px 16px;font-size:1.3rem">Add</button>' +
+            '</div>';
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        function refreshModalList() {
+            fetch('/api/projects/' + encodeURIComponent(projectId) + '/recipients')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var list = data.recipients || [];
+                    var el = document.getElementById('modalRecipientsList');
+                    if (!el) return;
+                    if (list.length === 0) {
+                        el.innerHTML = '<p style="color:#999;font-size:1.3rem">No recipients configured.</p>';
+                    } else {
+                        var html = '';
+                        for (var i = 0; i < list.length; i++) {
+                            html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f3f4f6">' +
+                                '<span style="font-size:1.4rem;color:#222">' + escHtml(list[i].user_id) + '</span>' +
+                                '<a href="javascript:void(0)" style="color:#dc2626;font-size:1.2rem;font-weight:600" ' +
+                                'onclick="removeRecipientFromModal(\'' + escAttr(projectId) + '\',' + list[i].id + ')">Remove</a></div>';
+                        }
+                        el.innerHTML = html;
+                    }
+                });
+        }
+        refreshModalList();
+
+        var btn = document.getElementById('modalAddBtn');
+        var input = document.getElementById('modalRecipientInput');
+        btn.onclick = function() {
+            var userId = input.value.trim();
+            if (!userId) return;
+            fetch('/api/projects/' + encodeURIComponent(projectId) + '/recipients', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) { alert(data.error); return; }
+                input.value = '';
+                refreshModalList();
+                refreshProjectTags(projectId);
+            })
+            .catch(function(err) { alert('Request failed: ' + err); });
+        };
+        input.onkeydown = function(e) { if (e.key === 'Enter') btn.onclick(); };
+        input.focus();
+    }
+    window.openRecipientsModal = openRecipientsModal;
+
+    function removeRecipientFromModal(projectId, rid) {
+        fetch('/api/projects/' + encodeURIComponent(projectId) + '/recipients/' + rid, { method: 'DELETE' })
+            .then(function(r) { return r.json(); })
+            .then(function() {
+                // Refresh modal list
+                var el = document.getElementById('modalRecipientsList');
+                if (el) {
+                    fetch('/api/projects/' + encodeURIComponent(projectId) + '/recipients')
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            var list = data.recipients || [];
+                            if (list.length === 0) {
+                                el.innerHTML = '<p style="color:#999;font-size:1.3rem">No recipients configured.</p>';
+                            } else {
+                                var html = '';
+                                for (var i = 0; i < list.length; i++) {
+                                    html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f3f4f6">' +
+                                        '<span style="font-size:1.4rem;color:#222">' + escHtml(list[i].user_id) + '</span>' +
+                                        '<a href="javascript:void(0)" style="color:#dc2626;font-size:1.2rem;font-weight:600" ' +
+                                        'onclick="removeRecipientFromModal(\'' + escAttr(projectId) + '\',' + list[i].id + ')">Remove</a></div>';
+                                }
+                                el.innerHTML = html;
+                            }
+                        });
+                }
+                refreshProjectTags(projectId);
+            });
+    }
+    window.removeRecipientFromModal = removeRecipientFromModal;
+
+    function refreshProjectTags(projectId) {
+        fetch('/api/projects/' + encodeURIComponent(projectId) + '/recipients')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var tagsEl = document.getElementById('projectRecipientTags');
+                if (!tagsEl) return;
+                var recipients = data.recipients || [];
+                var html = '';
+                for (var i = 0; i < recipients.length; i++) {
+                    html += '<span class="tag">' + escHtml(recipients[i].user_id) + '</span>';
+                }
+                html += '<span class="tag-add" onclick="openRecipientsModal(\'' + escAttr(projectId) + '\')">+ Edit</span>';
+                tagsEl.innerHTML = html;
+            });
     }
 
     function renderProjectJobsList(jobs) {

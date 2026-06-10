@@ -10,6 +10,12 @@ type Config struct {
 	// PodCodeBase 覆盖 K8s Pod 内 runner 访问 codebase 的地址（当 Pod 网络与宿主机不同时使用）
 	PodCodeBase map[string]CodeBase `yaml:"pod_codebase,omitempty"`
 	Kubernetes  KubernetesConfig    `yaml:"kubernetes"`
+	Notify      NotifyConfig        `yaml:"notify,omitempty"`
+}
+
+type NotifyConfig struct {
+	Url   string `yaml:"url"`
+	Token string `yaml:"token,omitempty"`
 }
 
 type KubernetesConfig struct {
@@ -19,6 +25,7 @@ type KubernetesConfig struct {
 	InitImage        string   `yaml:"init-image"`
 	CheckoutImage    string   `yaml:"checkout-image"`      // dedicated image for git checkout (must include git + ssh)
 	ImagePullSecrets []string `yaml:"image-pull-secrets,omitempty"` // K8s image pull secret names
+	PodApiUrl        string   `yaml:"pod-api-url,omitempty"`        // Pod 内访问 API server 的地址（本地开发用，覆盖集群内地址）
 }
 
 type CodeBase struct {
