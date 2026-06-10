@@ -45,12 +45,12 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 	if l.RunnerConfig.Trigger == "MR" {
 		// clone target branch, fetch source commit, merge
 		checkoutCommand = fmt.Sprintf(
-			"git clone --branch %s %s /repo && cd /repo && git config user.email neutron@ci && git config user.name neutron && git fetch origin %s && git merge --no-edit %s && chmod 777 /repo",
+			"git clone --branch %s %s /repo && cd /repo && git config user.email neutron@ci && git config user.name neutron && git fetch origin %s && git merge --no-edit %s && chmod -R 777 /repo",
 			shellEscape(l.RunnerConfig.TargetBranch), shellEscape(l.RunnerConfig.GitRepoUrl),
 			shellEscape(l.RunnerConfig.CommitSha), shellEscape(l.RunnerConfig.CommitSha))
 	} else {
 		// for tag or push, checkout specific sha
-		checkoutCommand = fmt.Sprintf("git clone %s /repo && git checkout %s && chmod 777 /repo",
+		checkoutCommand = fmt.Sprintf("git clone %s /repo && git checkout %s && chmod -R 777 /repo",
 			shellEscape(l.RunnerConfig.GitRepoUrl), shellEscape(l.RunnerConfig.CommitSha))
 	}
 
