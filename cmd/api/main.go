@@ -410,9 +410,9 @@ func main() {
 						statusUrl := fmt.Sprintf("%s/#/status/%s", config.Host, jobName)
 						var content string
 						if status.Failed > 0 {
-							content = fmt.Sprintf("❌ 流水线执行失败\n\n<font color=ff3333>任务:</font> %s\n<font color=ff3333>查看:</font> %s", jobName, statusUrl)
+							content = fmt.Sprintf("❌ 流水线执行失败\n\n📂 项目: %s\n📋 任务: %s\n🔗 查看: %s", dbJob.ProjectId, jobName, statusUrl)
 						} else {
-							content = fmt.Sprintf("✅ 流水线执行成功\n\n<font color=00cc66>任务:</font> %s\n<font color=00cc66>查看:</font> %s", jobName, statusUrl)
+							content = fmt.Sprintf("✅ 流水线执行成功\n\n📂 项目: %s\n📋 任务: %s\n🔗 查看: %s", dbJob.ProjectId, jobName, statusUrl)
 						}
 						for _, r := range recipients {
 							go notifyClient.SendMessage(r.UserId, content)
@@ -635,7 +635,7 @@ func main() {
 		if len(jobs) > 0 && notifyClient != nil {
 			if recipients, err := repo.ListNotifyRecipients(id); err == nil {
 				statusUrl := fmt.Sprintf("%s/#/status/%s", config.Host, jobs[0])
-				content := fmt.Sprintf("🚀 流水线触发通知\n\n<font color=3399ff>项目:</font> %s\n<font color=3399ff>触发:</font> %s\n<font color=3399ff>查看:</font> %s", webhookConfig.RepoUrl, pTrigger, statusUrl)
+				content := fmt.Sprintf("🚀 流水线触发通知\n\n📂 项目: %s\n🔄 触发: %s\n🔗 查看: %s", webhookConfig.RepoUrl, pTrigger, statusUrl)
 				for _, r := range recipients {
 					go notifyClient.SendMessage(r.UserId, content)
 				}

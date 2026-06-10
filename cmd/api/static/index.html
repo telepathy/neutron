@@ -260,8 +260,15 @@
         // Remove trailing slash from baseUrl
         baseUrl = baseUrl.replace(/\/+$/, '');
 
-        if (sshUrl.startsWith('ssh://')) {
-            // ssh://git@host:port/path.git → baseUrl/path
+        if (sshUrl.startsWith('ssh://git@codeup')) {
+            // Codeup SSH: ssh://git@codeup.xxx.com:9022/org/repo.git → baseUrl/org/repo
+            var parts = sshUrl.split(':9022');
+            if (parts.length >= 2) {
+                var path = parts[1].replace(/\.git$/, '');
+                return baseUrl + path;
+            }
+        } else if (sshUrl.startsWith('ssh://')) {
+            // Generic SSH: ssh://git@host:port/path.git → baseUrl/path
             var parts = sshUrl.replace('ssh://', '').split(':');
             if (parts.length >= 2) {
                 var path = parts[parts.length - 1];
@@ -272,7 +279,7 @@
                 return baseUrl + '/' + path.replace(/\.git$/, '');
             }
         } else if (sshUrl.startsWith('git@')) {
-            // git@host:path.git → baseUrl/path
+            // Git format: git@host:path.git → baseUrl/path
             var colonIdx = sshUrl.indexOf(':');
             if (colonIdx > 0) {
                 var path = sshUrl.substring(colonIdx + 1);
