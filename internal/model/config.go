@@ -14,8 +14,10 @@ type Config struct {
 }
 
 type NotifyConfig struct {
-	Url   string `yaml:"url"`
-	Token string `yaml:"token,omitempty"`
+	Url           string `yaml:"url"`
+	CorpId        string `yaml:"corp_id"`
+	AppId         string `yaml:"app_id"`
+	SkipTLSVerify bool   `yaml:"skip_tls_verify,omitempty"`
 }
 
 type KubernetesConfig struct {

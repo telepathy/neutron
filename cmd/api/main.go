@@ -20,6 +20,7 @@ import (
 	"neutron/internal/gitlab"
 	"neutron/internal/launcher"
 	"neutron/internal/model"
+	"neutron/internal/notify"
 	v1 "k8s.io/api/core/v1"
 	"os"
 	"os/signal"
@@ -31,34 +32,6 @@ import (
 
 //go:embed static/*
 var staticFs embed.FS
-
-func sendNotify(cfg model.NotifyConfig, userId string, content string) {
-	if cfg.Url == "" {
-		return
-	}
-	body, _ := json.Marshal(map[string]string{
-		"user_id": userId,
-		"content": content,
-	})
-	req, err := http.NewRequest("POST", cfg.Url, strings.NewReader(string(body)))
-	if err != nil {
-		log.Printf("notify: failed to create request: %v", err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if cfg.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+cfg.Token)
-	}
-	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
-	if err != nil {
-		log.Printf("notify: failed to send to %s: %v", userId, err)
-		return
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		log.Printf("notify: API returned %d for user %s", resp.StatusCode, userId)
-	}
-}
 
 func main() {
 	var config model.Config
@@ -156,13 +129,25 @@ func main() {
 	if v := os.Getenv("NEUTRON_NOTIFY_URL"); v != "" {
 		config.Notify.Url = v
 	}
-	if v := os.Getenv("NEUTRON_NOTIFY_TOKEN"); v != "" {
-		config.Notify.Token = v
+	if v := os.Getenv("NEUTRON_NOTIFY_CORP_ID"); v != "" {
+		config.Notify.CorpId = v
+	}
+	if v := os.Getenv("NEUTRON_NOTIFY_APP_ID"); v != "" {
+		config.Notify.AppId = v
+	}
+	if v := os.Getenv("NEUTRON_NOTIFY_SKIP_TLS_VERIFY"); v == "true" {
+		config.Notify.SkipTLSVerify = true
 	}
 	if v := os.Getenv("NEUTRON_POD_API_URL"); v != "" {
 		config.Kubernetes.PodApiUrl = v
 	}
 	repo := internal.NewRepository(config)
+
+	// Initialize notify client
+	var notifyClient *notify.Client
+	if config.Notify.Url != "" && config.Notify.CorpId != "" && config.Notify.AppId != "" {
+		notifyClient = notify.NewClient(config.Notify.Url, config.Notify.CorpId, config.Notify.AppId, config.Notify.SkipTLSVerify)
+	}
 
 	kubeConfig, err := rest.InClusterConfig()
 	if err != nil {
@@ -419,16 +404,19 @@ func main() {
 		// Mark job completed and asynchronously sync final pod phase
 		if status.Succeeded > 0 || status.Failed > 0 {
 			// Notify recipients: pipeline completed
-			if dbJob, err := repo.GetJobByName(jobName); err == nil {
-				if recipients, err := repo.ListNotifyRecipients(dbJob.ProjectId); err == nil {
-					state := "succeeded"
-					if status.Failed > 0 {
-						state = "failed"
-					}
-					statusUrl := fmt.Sprintf("%s/#/status/%s", config.Host, jobName)
-					content := fmt.Sprintf("Pipeline %s (%s), view: %s", state, jobName, statusUrl)
-					for _, r := range recipients {
-						go sendNotify(config.Notify, r.UserId, content)
+			if notifyClient != nil {
+				if dbJob, err := repo.GetJobByName(jobName); err == nil {
+					if recipients, err := repo.ListNotifyRecipients(dbJob.ProjectId); err == nil {
+						statusUrl := fmt.Sprintf("%s/#/status/%s", config.Host, jobName)
+						var content string
+						if status.Failed > 0 {
+							content = fmt.Sprintf("❌ 流水线执行失败\n\n<font color=ff3333>任务:</font> %s\n<font color=ff3333>查看:</font> %s", jobName, statusUrl)
+						} else {
+							content = fmt.Sprintf("✅ 流水线执行成功\n\n<font color=00cc66>任务:</font> %s\n<font color=00cc66>查看:</font> %s", jobName, statusUrl)
+						}
+						for _, r := range recipients {
+							go notifyClient.SendMessage(r.UserId, content)
+						}
 					}
 				}
 			}
@@ -644,12 +632,12 @@ func main() {
 		}
 
 		// Notify recipients: pipeline triggered
-		if len(jobs) > 0 {
+		if len(jobs) > 0 && notifyClient != nil {
 			if recipients, err := repo.ListNotifyRecipients(id); err == nil {
 				statusUrl := fmt.Sprintf("%s/#/status/%s", config.Host, jobs[0])
-				content := fmt.Sprintf("Pipeline triggered (%s %s), view: %s", webhookConfig.RepoUrl, pTrigger, statusUrl)
+				content := fmt.Sprintf("🚀 流水线触发通知\n\n<font color=3399ff>项目:</font> %s\n<font color=3399ff>触发:</font> %s\n<font color=3399ff>查看:</font> %s", webhookConfig.RepoUrl, pTrigger, statusUrl)
 				for _, r := range recipients {
-					go sendNotify(config.Notify, r.UserId, content)
+					go notifyClient.SendMessage(r.UserId, content)
 				}
 			}
 		}
