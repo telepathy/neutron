@@ -45,12 +45,12 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 	if l.RunnerConfig.Trigger == "MR" {
 		// clone target branch, fetch source commit, merge
 		checkoutCommand = fmt.Sprintf(
-			"git clone --branch %s %s /repo && cd /repo && git config user.email neutron@ci && git config user.name neutron && git fetch origin %s && git merge --no-edit %s",
+			"git clone --branch %s %s /repo && cd /repo && git config user.email neutron@ci && git config user.name neutron && git fetch origin %s && git merge --no-edit %s && chmod 777 /repo",
 			shellEscape(l.RunnerConfig.TargetBranch), shellEscape(l.RunnerConfig.GitRepoUrl),
 			shellEscape(l.RunnerConfig.CommitSha), shellEscape(l.RunnerConfig.CommitSha))
 	} else {
 		// for tag or push, checkout specific sha
-		checkoutCommand = fmt.Sprintf("git clone %s /repo && git checkout %s",
+		checkoutCommand = fmt.Sprintf("git clone %s /repo && git checkout %s && chmod 777 /repo",
 			shellEscape(l.RunnerConfig.GitRepoUrl), shellEscape(l.RunnerConfig.CommitSha))
 	}
 
@@ -136,6 +136,9 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 						},
 					},
 					RestartPolicy:   v1.RestartPolicyNever,
+					SecurityContext: &v1.PodSecurityContext{
+						FSGroup: int64Ptr(0),
+					},
 					ImagePullSecrets: l.imagePullSecrets(),
 					Volumes: []v1.Volume{
 						{Name: "pipeline", VolumeSource: v1.VolumeSource{EmptyDir: &v1.EmptyDirVolumeSource{}}},
@@ -166,6 +169,10 @@ func (l *Launcher) podApiUrl() string {
 }
 
 func int32Ptr(i int32) *int32 {
+	return &i
+}
+
+func int64Ptr(i int64) *int64 {
 	return &i
 }
 
