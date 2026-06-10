@@ -136,9 +136,6 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 						},
 					},
 					RestartPolicy:   v1.RestartPolicyNever,
-					SecurityContext: &v1.PodSecurityContext{
-						FSGroup: int64Ptr(0),
-					},
 					ImagePullSecrets: l.imagePullSecrets(),
 					Volumes: []v1.Volume{
 						{Name: "pipeline", VolumeSource: v1.VolumeSource{EmptyDir: &v1.EmptyDirVolumeSource{}}},
@@ -169,10 +166,6 @@ func (l *Launcher) podApiUrl() string {
 }
 
 func int32Ptr(i int32) *int32 {
-	return &i
-}
-
-func int64Ptr(i int64) *int64 {
 	return &i
 }
 
