@@ -499,6 +499,25 @@
                     '<li><strong>MR</strong> — Triggered on merge request creation or update</li>' +
                     '<li><strong>TAG</strong> — Triggered on tag creation</li>' +
                 '</ul>' +
+            '</div>' +
+            '<div class="card">' +
+                '<h3 style="margin-bottom:16px">Webhook URL Parameters</h3>' +
+                '<p style="margin-bottom:12px">You can pass custom parameters to the pipeline by appending query parameters to the webhook URL. These parameters are injected as environment variables into the pipeline pod and can be used in step commands.</p>' +
+                '<p style="margin-bottom:8px;font-size:1.4rem;font-weight:600;color:#222">Webhook URL example:</p>' +
+                '<pre style="background:#f8f9fa;padding:16px;border-radius:8px;overflow-x:auto;font-size:1.3rem;line-height:1.5">' +
+                escHtml('https://neutron.example.com/webhook/abc-123?DEPLOY_ENV=prod&IMAGE_TAG=v1.2.3') +
+                '</pre>' +
+                '<p style="margin:12px 0 8px;font-size:1.4rem;font-weight:600;color:#222">Using in neutron.yaml:</p>' +
+                '<pre style="background:#f8f9fa;padding:16px;border-radius:8px;overflow-x:auto;font-size:1.3rem;line-height:1.5">' +
+                escHtml('jobs:\n' +
+                    '  deploy:\n' +
+                    '    image: alpine:latest\n' +
+                    '    trigger: [TAG]\n' +
+                    '    steps:\n' +
+                    '      - name: deploy\n' +
+                    '        cmd: echo "Deploying $IMAGE_TAG to $DEPLOY_ENV"') +
+                '</pre>' +
+                '<p style="margin-top:12px;color:#999;font-size:1.3rem">Note: Parameter names should use UPPER_SNAKE_CASE and must not conflict with built-in env vars (JOB_NAME, TRIGGER, COMMIT_SHA, etc.).</p>' +
             '</div>';
     }
 
