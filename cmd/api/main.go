@@ -678,6 +678,10 @@ func main() {
 			if platform == "GitLab" && pTargetBranch != "" {
 				extraEnv = append(extraEnv, v1.EnvVar{Name: "TARGET_BRANCH", Value: pTargetBranch})
 			}
+			// pass webhook URL query params as env vars to the pod
+			for key, values := range c.Request.URL.Query() {
+				extraEnv = append(extraEnv, v1.EnvVar{Name: key, Value: values[0]})
+			}
 
 			l := launcher.NewLauncher(
 				config.Kubernetes.Namespace,
