@@ -254,32 +254,34 @@
     // --- SSH to HTTP conversion ---
     function sshToHttp(sshUrl, webhookType) {
         if (!sshUrl) return '';
+
+        // Codeup: ssh://git@codeup.xxx.com:9022/org-id/path/repo.git → http://codeup.xxx.com/codeup/org-id/path/repo
+        if (sshUrl.startsWith('ssh://git@codeup')) {
+            var hostEnd = sshUrl.indexOf(':9022');
+            if (hostEnd > 0) {
+                var host = sshUrl.substring(10, hostEnd); // extract "codeup.devops.csdc.com"
+                var path = sshUrl.substring(hostEnd + 5).replace(/\.git$/, ''); // skip ":9022"
+                return 'http://' + host + '/codeup' + path;
+            }
+        }
+
+        // GitLab and others: use codebaseUrls from config
         var baseUrl = appConfig.codebaseUrls[webhookType] || '';
         if (!baseUrl) return '';
-
-        // Remove trailing slash from baseUrl
         baseUrl = baseUrl.replace(/\/+$/, '');
 
-        if (sshUrl.startsWith('ssh://git@codeup')) {
-            // Codeup SSH: ssh://git@codeup.xxx.com:9022/org/repo.git → baseUrl/org/repo
-            var parts = sshUrl.split(':9022');
-            if (parts.length >= 2) {
-                var path = parts[1].replace(/\.git$/, '');
-                return baseUrl + path;
-            }
-        } else if (sshUrl.startsWith('ssh://')) {
-            // Generic SSH: ssh://git@host:port/path.git → baseUrl/path
+        if (sshUrl.startsWith('ssh://')) {
+            // ssh://git@host:port/path.git → baseUrl/path
             var parts = sshUrl.replace('ssh://', '').split(':');
             if (parts.length >= 2) {
                 var path = parts[parts.length - 1];
-                // Remove port number from path if present
                 if (/^\d+\//.test(path)) {
                     path = path.replace(/^\d+\//, '');
                 }
                 return baseUrl + '/' + path.replace(/\.git$/, '');
             }
         } else if (sshUrl.startsWith('git@')) {
-            // Git format: git@host:path.git → baseUrl/path
+            // git@host:path.git → baseUrl/path
             var colonIdx = sshUrl.indexOf(':');
             if (colonIdx > 0) {
                 var path = sshUrl.substring(colonIdx + 1);
