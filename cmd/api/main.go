@@ -471,16 +471,18 @@ func main() {
 			// Notify recipients: pipeline completed
 			if dbJob, err := repo.GetJobByName(jobName); err == nil {
 				statusUrl := fmt.Sprintf("%s/#/status/%s", config.Host, jobName)
-				var content string
+				var title, content string
 				if status.Failed > 0 {
-					content = fmt.Sprintf("❌ 流水线执行失败\n\n📂 项目: %s\n📋 任务: %s\n🔗 查看: %s", dbJob.ProjectId, jobName, statusUrl)
+					title = "❌ 流水线执行失败"
+					content = fmt.Sprintf("📂 项目: %s\n📋 任务: %s\n🔗 查看: %s", dbJob.ProjectId, jobName, statusUrl)
 				} else {
-					content = fmt.Sprintf("✅ 流水线执行成功\n\n📂 项目: %s\n📋 任务: %s\n🔗 查看: %s", dbJob.ProjectId, jobName, statusUrl)
+					title = "✅ 流水线执行成功"
+					content = fmt.Sprintf("📂 项目: %s\n📋 任务: %s\n🔗 查看: %s", dbJob.ProjectId, jobName, statusUrl)
 				}
 				if notifyClient != nil {
 					if recipients, err := repo.ListNotifyRecipients(dbJob.ProjectId); err == nil {
 						for _, r := range recipients {
-							go notifyClient.SendMessage(r.UserId, content)
+							go notifyClient.SendMessage(r.UserId, title, content)
 						}
 					}
 				}
@@ -489,7 +491,7 @@ func main() {
 					for i, w := range webhooks {
 						ccWebhooks[i] = ccwork.Webhook{Url: w.WebhookUrl, Description: w.Description}
 					}
-					go ccworkRobot.SendToAll(ccWebhooks, content)
+					go ccworkRobot.SendToAll(ccWebhooks, title, content)
 				}
 			}
 			finalPhase := "Succeeded"
@@ -707,11 +709,12 @@ func main() {
 		// Notify recipients: pipeline triggered
 		if len(jobs) > 0 {
 			statusUrl := fmt.Sprintf("%s/#/status/%s", config.Host, jobs[0])
-			content := fmt.Sprintf("🚀 流水线触发通知\n\n📂 项目: %s\n🔄 触发: %s\n🔗 查看: %s", webhookConfig.RepoUrl, pTrigger, statusUrl)
+			title := "🚀 流水线触发通知"
+			content := fmt.Sprintf("📂 项目: %s\n🔄 触发: %s\n🔗 查看: %s", webhookConfig.RepoUrl, pTrigger, statusUrl)
 			if notifyClient != nil {
 				if recipients, err := repo.ListNotifyRecipients(id); err == nil {
 					for _, r := range recipients {
-						go notifyClient.SendMessage(r.UserId, content)
+						go notifyClient.SendMessage(r.UserId, title, content)
 					}
 				}
 			}
@@ -720,7 +723,7 @@ func main() {
 				for i, w := range webhooks {
 					ccWebhooks[i] = ccwork.Webhook{Url: w.WebhookUrl, Description: w.Description}
 				}
-				go ccworkRobot.SendToAll(ccWebhooks, content)
+				go ccworkRobot.SendToAll(ccWebhooks, title, content)
 			}
 		}
 

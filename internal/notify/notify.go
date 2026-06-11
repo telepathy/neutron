@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type Client struct {
@@ -30,6 +32,21 @@ type messageRequest struct {
 }
 
 type messageBody struct {
+	Id         string      `json:"id"`
+	Value      string      `json:"value"`
+	Url        interface{} `json:"url"`
+	Avatartype int         `json:"avatartype"`
+	Summary    string      `json:"summary"`
+	Head       messageHead `json:"head"`
+	Body       messageContent `json:"body"`
+}
+
+type messageHead struct {
+	Text   string `json:"text"`
+	Tcolor string `json:"tcolor"`
+}
+
+type messageContent struct {
 	Content string `json:"content"`
 }
 
@@ -73,7 +90,7 @@ func (c *Client) getAccessToken() (string, error) {
 	return tokenResp.AccessToken, nil
 }
 
-func (c *Client) SendMessage(userId, content string) error {
+func (c *Client) SendMessage(userId, title, content string) error {
 	token, err := c.getAccessToken()
 	if err != nil {
 		return err
@@ -82,8 +99,21 @@ func (c *Client) SendMessage(userId, content string) error {
 	url := fmt.Sprintf("%s/v2/message/bot_send_to_conversation?access_token=%s", c.Url, token)
 	reqBody := messageRequest{
 		ToSingleAccount: userId,
-		Type:            "text",
-		Message:         messageBody{Content: content},
+		Type:            "attachment",
+		Message: messageBody{
+			Id:         uuid.New().String(),
+			Value:      title,
+			Url:        nil,
+			Avatartype: 0,
+			Summary:    title,
+			Head: messageHead{
+				Text:   title,
+				Tcolor: "FC6D26",
+			},
+			Body: messageContent{
+				Content: content,
+			},
+		},
 	}
 
 	data, err := json.Marshal(reqBody)
@@ -105,9 +135,9 @@ func (c *Client) SendMessage(userId, content string) error {
 	return nil
 }
 
-func (c *Client) SendToAll(userIds []string, content string) {
+func (c *Client) SendToAll(userIds []string, title, content string) {
 	for _, userId := range userIds {
-		if err := c.SendMessage(userId, content); err != nil {
+		if err := c.SendMessage(userId, title, content); err != nil {
 			log.Printf("failed to send notify to %s: %v", userId, err)
 		}
 	}
