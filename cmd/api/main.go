@@ -471,13 +471,18 @@ func main() {
 			// Notify recipients: pipeline completed
 			if dbJob, err := repo.GetJobByName(jobName); err == nil {
 				statusUrl := fmt.Sprintf("%s/#/status/%s", config.Host, jobName)
+				project := repo.GetWebhookConfig(dbJob.ProjectId)
+				repoUrl := project.RepoUrl
+				if repoUrl == "" {
+					repoUrl = dbJob.ProjectId
+				}
 				var title, content string
 				if status.Failed > 0 {
 					title = "❌ 流水线执行失败"
-					content = fmt.Sprintf("📂 项目: %s\n📋 任务: %s\n🔗 查看: %s", dbJob.ProjectId, jobName, statusUrl)
+					content = fmt.Sprintf("📂 项目: %s\n📋 任务: %s\n🔗 查看: %s", repoUrl, jobName, statusUrl)
 				} else {
 					title = "✅ 流水线执行成功"
-					content = fmt.Sprintf("📂 项目: %s\n📋 任务: %s\n🔗 查看: %s", dbJob.ProjectId, jobName, statusUrl)
+					content = fmt.Sprintf("📂 项目: %s\n📋 任务: %s\n🔗 查看: %s", repoUrl, jobName, statusUrl)
 				}
 				if notifyClient != nil {
 					if recipients, err := repo.ListNotifyRecipients(dbJob.ProjectId); err == nil {
