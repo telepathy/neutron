@@ -155,6 +155,13 @@ func (r *Repository) ListProjectJobs(projectId string, days int) ([]PipelineJob,
 	return jobs, err
 }
 
+func (r *Repository) ListAllRecentJobs(days int) ([]PipelineJob, error) {
+	var jobs []PipelineJob
+	err := r.db.Where("name >= ?", time.Now().AddDate(0, 0, -days).Format("20060102")).
+		Order("id DESC").Preload("Pods").Find(&jobs).Error
+	return jobs, err
+}
+
 func (r *Repository) GetJobByName(name string) (*PipelineJob, error) {
 	var job PipelineJob
 	result := r.db.Where("name = ?", name).Preload("Pods").First(&job)

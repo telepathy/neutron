@@ -5,14 +5,25 @@ type Pipeline struct {
 }
 
 type Job struct {
-	Image   string   `yaml:"image"`
-	Trigger []string `yaml:"trigger"`
-	Steps   []Step   `yaml:"steps"`
+	Image     string     `yaml:"image"`
+	Trigger   []string   `yaml:"trigger"`
+	Steps     []Step     `yaml:"steps"`
+	Resources *Resources `yaml:"resources,omitempty"`
 }
 
 type Step struct {
 	StepName string `yaml:"name"`
 	Command  string `yaml:"cmd"`
+}
+
+type Resources struct {
+	Limits   ResourceSpec `yaml:"limits,omitempty"`
+	Requests ResourceSpec `yaml:"requests,omitempty"`
+}
+
+type ResourceSpec struct {
+	Cpu    string `yaml:"cpu,omitempty"`
+	Memory string `yaml:"memory,omitempty"`
 }
 
 type RunnerConfig struct {

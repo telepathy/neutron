@@ -5,6 +5,7 @@ import (
 	"strings"
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"neutron/internal/model"
 	"time"
@@ -19,11 +20,12 @@ type Launcher struct {
 	SshKeyName       string
 	ImagePullSecrets []string
 	Platform         string
-	PodApiUrl        string   // override NEUTRON_API_URL for pods (local dev)
-	ExtraEnv         []v1.EnvVar // platform-specific env vars (e.g. TARGET_BRANCH for GitLab MR)
+	PodApiUrl        string          // override NEUTRON_API_URL for pods (local dev)
+	ExtraEnv         []v1.EnvVar     // platform-specific env vars (e.g. TARGET_BRANCH for GitLab MR)
+	Resources        *model.Resources // job-level resource requirements
 }
 
-func NewLauncher(namespace string, runnerConfig model.RunnerConfig, initImage string, checkoutImage string, baseImage string, keyName string, imagePullSecrets []string, platform string, podApiUrl string, extraEnv ...v1.EnvVar) *Launcher {
+func NewLauncher(namespace string, runnerConfig model.RunnerConfig, initImage string, checkoutImage string, baseImage string, keyName string, imagePullSecrets []string, platform string, podApiUrl string, resources *model.Resources, extraEnv ...v1.EnvVar) *Launcher {
 	return &Launcher{
 		Namespace:        namespace,
 		RunnerConfig:     runnerConfig,
@@ -35,6 +37,7 @@ func NewLauncher(namespace string, runnerConfig model.RunnerConfig, initImage st
 		Platform:         platform,
 		PodApiUrl:        podApiUrl,
 		ExtraEnv:         extraEnv,
+		Resources:        resources,
 	}
 }
 
@@ -102,6 +105,7 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 								{MountPath: "/pipeline", Name: "pipeline"},
 								{MountPath: "/repo", Name: "repo"},
 							},
+							Resources: l.buildResourceRequirements(),
 						},
 					},
 					InitContainers: []v1.Container{
@@ -177,6 +181,37 @@ func (l *Launcher) imagePullSecrets() []v1.LocalObjectReference {
 		}
 	}
 	return refs
+}
+
+// buildResourceRequirements converts model.Resources to K8s ResourceRequirements
+func (l *Launcher) buildResourceRequirements() v1.ResourceRequirements {
+	if l.Resources == nil {
+		return v1.ResourceRequirements{}
+	}
+
+	req := v1.ResourceRequirements{}
+
+	if l.Resources.Limits.Cpu != "" || l.Resources.Limits.Memory != "" {
+		req.Limits = v1.ResourceList{}
+		if l.Resources.Limits.Cpu != "" {
+			req.Limits[v1.ResourceCPU] = resource.MustParse(l.Resources.Limits.Cpu)
+		}
+		if l.Resources.Limits.Memory != "" {
+			req.Limits[v1.ResourceMemory] = resource.MustParse(l.Resources.Limits.Memory)
+		}
+	}
+
+	if l.Resources.Requests.Cpu != "" || l.Resources.Requests.Memory != "" {
+		req.Requests = v1.ResourceList{}
+		if l.Resources.Requests.Cpu != "" {
+			req.Requests[v1.ResourceCPU] = resource.MustParse(l.Resources.Requests.Cpu)
+		}
+		if l.Resources.Requests.Memory != "" {
+			req.Requests[v1.ResourceMemory] = resource.MustParse(l.Resources.Requests.Memory)
+		}
+	}
+
+	return req
 }
 
 // shellEscape wraps a string in single quotes for safe use in shell commands.

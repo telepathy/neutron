@@ -34,4 +34,5 @@ type CodeBase struct {
 	Url            string `yaml:"url"`
 	Token          string `yaml:"token"`
 	SkipTLSVerify  bool   `yaml:"skip_tls_verify,omitempty"`
+	WebhookUrl     string `yaml:"webhook_url,omitempty"` // 外部可访问的 webhook URL（覆盖 config.Host）
 }

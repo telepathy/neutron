@@ -126,6 +126,11 @@ func main() {
 		cb.SkipTLSVerify = true
 		config.BaseConfig["Codeup"] = cb
 	}
+	if v := os.Getenv("NEUTRON_CODEUP_WEBHOOK_URL"); v != "" {
+		cb := config.BaseConfig["Codeup"]
+		cb.WebhookUrl = v
+		config.BaseConfig["Codeup"] = cb
+	}
 	if v := os.Getenv("NEUTRON_NOTIFY_URL"); v != "" {
 		config.Notify.Url = v
 	}
@@ -212,6 +217,15 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"jobs": jobs})
 	})
 
+	r.GET("/api/jobs/recent", func(c *gin.Context) {
+		jobs, err := repo.ListAllRecentJobs(7)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"jobs": jobs})
+	})
+
 	r.GET("/api/projects/:id/recipients", func(c *gin.Context) {
 		id := c.Param("id")
 		recipients, err := repo.ListNotifyRecipients(id)
@@ -270,7 +284,12 @@ func main() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		webhookUrl := fmt.Sprintf("%s/webhook/%s", config.Host, p.Id)
+		// Determine webhook URL: use platform-specific URL if configured, otherwise use config.Host
+		webhookHost := config.Host
+		if cb, ok := config.BaseConfig[p.WebhookType]; ok && cb.WebhookUrl != "" {
+			webhookHost = cb.WebhookUrl
+		}
+		webhookUrl := fmt.Sprintf("%s/webhook/%s", webhookHost, p.Id)
 		c.JSON(http.StatusOK, gin.H{
 			"id":          p.Id,
 			"webhookType": p.WebhookType,
@@ -610,6 +629,7 @@ func main() {
 				config.Kubernetes.ImagePullSecrets,
 				platform,
 				config.Kubernetes.PodApiUrl,
+				job.Resources,
 				extraEnv...,
 			)
 			jobClient := clientSet.BatchV1().Jobs(config.Kubernetes.Namespace)

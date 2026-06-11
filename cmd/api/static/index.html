@@ -179,7 +179,10 @@
 <nav>
     <a class="brand" href="#/"><img src="/static/logo.svg" alt="neutron" class="logo">neutron</a>
     <a href="#/projects">Projects</a>
+    <a href="#/recent">Recent Jobs</a>
     <a href="#/register">Register</a>
+    <span style="flex:1"></span>
+    <a href="#/help" style="margin-right:0">📖 Help</a>
 </nav>
 <div id="app" class="container"></div>
 <script>
@@ -235,8 +238,12 @@
             renderHome();
         } else if (hash === '#/projects') {
             renderProjects();
+        } else if (hash === '#/recent') {
+            renderRecentJobs();
         } else if (hash === '#/register') {
             renderRegister();
+        } else if (hash === '#/help') {
+            renderHelp();
         } else if (hash.startsWith('#/register/success?')) {
             renderRegisterInfo();
         } else if (hash.startsWith('#/status/')) {
@@ -298,6 +305,201 @@
         var url = repoUrl.replace(/\.git$/, '');
         var parts = url.split('/');
         return parts[parts.length - 1] || '';
+    }
+
+    // --- Parse job status JSON ---
+    function parseJobStatus(statusStr) {
+        try { return JSON.parse(statusStr); } catch(e) { return {}; }
+    }
+
+    // --- Recent Jobs ---
+    var RECENT_PAGE_SIZE = 20;
+    var _recentJobs = [];
+    var _recentFiltered = [];
+    var _recentPage = 0;
+
+    function renderRecentJobs() {
+        app.innerHTML =
+            '<p class="page-title">Recent <b>Jobs</b> <span style="font-size:1.4rem;color:#999;font-weight:400">(last 7 days)</span></p>' +
+            '<div style="margin-bottom:20px">' +
+                '<input type="text" id="recentSearchInput" placeholder="Filter by project, job name, or status..." style="max-width:400px">' +
+            '</div>' +
+            '<div id="recentJobsList"><p style="color:#999">Loading...</p></div>' +
+            '<div id="recentPagination" style="text-align:center;margin-top:24px"></div>';
+
+        fetch('/api/jobs/recent')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    document.getElementById('recentJobsList').innerHTML = '<p style="color:#c00">' + escHtml(data.error) + '</p>';
+                    return;
+                }
+                _recentJobs = data.jobs || [];
+                _recentFiltered = _recentJobs;
+                _recentPage = 0;
+                renderRecentJobsPage();
+
+                document.getElementById('recentSearchInput').addEventListener('input', function() {
+                    var q = this.value.toLowerCase();
+                    if (!q) {
+                        _recentFiltered = _recentJobs;
+                    } else {
+                        _recentFiltered = _recentJobs.filter(function(job) {
+                            var st = parseJobStatus(job.Status);
+                            var repoName = getRepoName(st.repo_url) || '';
+                            var statusText = '';
+                            if (st.succeeded > 0) statusText = 'success succeeded';
+                            else if (st.failed > 0) statusText = 'fail failed';
+                            else if (st.active > 0) statusText = 'running active';
+                            else statusText = 'pending';
+                            var searchable = [repoName, job.Name || '', st.trigger_type || '', statusText, st.webhook_type || ''].join(' ').toLowerCase();
+                            return searchable.indexOf(q) >= 0;
+                        });
+                    }
+                    _recentPage = 0;
+                    renderRecentJobsPage();
+                });
+            })
+            .catch(function(err) {
+                document.getElementById('recentJobsList').innerHTML = '<p style="color:#c00">Failed to load: ' + escHtml(String(err)) + '</p>';
+            });
+    }
+
+    function renderRecentJobsPage() {
+        var totalPages = Math.ceil(_recentFiltered.length / RECENT_PAGE_SIZE);
+        if (totalPages === 0) {
+            document.getElementById('recentJobsList').innerHTML = '<p style="color:#999">No jobs found.</p>';
+            document.getElementById('recentPagination').innerHTML = '';
+            return;
+        }
+
+        var start = _recentPage * RECENT_PAGE_SIZE;
+        var end = Math.min(start + RECENT_PAGE_SIZE, _recentFiltered.length);
+        var pageJobs = _recentFiltered.slice(start, end);
+
+        var html = '<table><thead><tr><th>Status</th><th>Project</th><th>Job Name</th><th>Pod</th><th>Time</th><th></th></tr></thead><tbody>';
+        for (var i = 0; i < pageJobs.length; i++) {
+            var job = pageJobs[i];
+            var st = parseJobStatus(job.Status);
+            var statusIcon = '⏳';
+            var statusColor = '#999';
+            if (st.succeeded > 0) { statusIcon = '✅'; statusColor = '#00cc66'; }
+            else if (st.failed > 0) { statusIcon = '❌'; statusColor = '#ff3333'; }
+            else if (st.active > 0) { statusIcon = '🔄'; statusColor = '#3399ff'; }
+
+            var repoName = getRepoName(st.repo_url) || job.ProjectId;
+            var podName = (job.Pods && job.Pods.length > 0) ? job.Pods[0].PodName : '-';
+            var triggerType = st.trigger_type || '-';
+            var timeStr = '';
+            if (job.CompletedAt) {
+                var d = new Date(job.CompletedAt);
+                timeStr = d.toLocaleString();
+            }
+
+            html += '<tr>';
+            html += '<td style="color:' + statusColor + ';font-size:1.8rem">' + statusIcon + '</td>';
+            html += '<td><b>' + escHtml(repoName) + '</b></td>';
+            html += '<td>' + escHtml(job.Name) + '</td>';
+            html += '<td style="font-size:1.3rem;color:#999">' + escHtml(podName) + '</td>';
+            html += '<td style="font-size:1.3rem;color:#999">' + escHtml(timeStr) + '</td>';
+            html += '<td><a href="#/status/' + escAttr(job.Name) + '" class="btn btn-outline" style="padding:4px 12px;font-size:1.2rem">View</a></td>';
+            html += '</tr>';
+        }
+        html += '</tbody></table>';
+        document.getElementById('recentJobsList').innerHTML = html;
+
+        // Pagination controls
+        var paginationHtml = '<div style="font-size:1.3rem;color:#999;margin-bottom:8px">Showing ' + (start + 1) + '-' + end + ' of ' + _recentFiltered.length + ' jobs</div>';
+        if (totalPages > 1) {
+            paginationHtml += '<div style="display:flex;justify-content:center;align-items:center;gap:12px">';
+            paginationHtml += '<button class="btn btn-outline" style="padding:6px 16px;font-size:1.3rem"' +
+                (_recentPage === 0 ? ' disabled' : '') +
+                ' onclick="recentJobsPrevPage()">← Prev</button>';
+            paginationHtml += '<span style="font-size:1.3rem;color:#606c76">Page ' + (_recentPage + 1) + ' of ' + totalPages + '</span>';
+            paginationHtml += '<button class="btn btn-outline" style="padding:6px 16px;font-size:1.3rem"' +
+                (_recentPage >= totalPages - 1 ? ' disabled' : '') +
+                ' onclick="recentJobsNextPage()">Next →</button>';
+            paginationHtml += '</div>';
+        }
+        document.getElementById('recentPagination').innerHTML = paginationHtml;
+    }
+
+    function recentJobsPrevPage() {
+        if (_recentPage > 0) { _recentPage--; renderRecentJobsPage(); }
+    }
+    function recentJobsNextPage() {
+        var totalPages = Math.ceil(_recentFiltered.length / RECENT_PAGE_SIZE);
+        if (_recentPage < totalPages - 1) { _recentPage++; renderRecentJobsPage(); }
+    }
+    window.recentJobsPrevPage = recentJobsPrevPage;
+    window.recentJobsNextPage = recentJobsNextPage;
+
+    // --- Help Page ---
+    function renderHelp() {
+        app.innerHTML =
+            '<p class="page-title"><b>Help</b> & Documentation</p>' +
+            '<div class="card">' +
+                '<h3 style="margin-bottom:16px">Getting Started</h3>' +
+                '<ol style="padding-left:20px;line-height:2">' +
+                    '<li>Register your project on the <a href="#/register">Register</a> page</li>' +
+                    '<li>Copy the webhook URL and configure it in your GitLab/Codeup repository</li>' +
+                    '<li>Add a <code>neutron.yaml</code> file to your repository root</li>' +
+                    '<li>Push code or create a merge request to trigger the pipeline</li>' +
+                '</ol>' +
+            '</div>' +
+            '<div class="card">' +
+                '<h3 style="margin-bottom:16px">neutron.yaml Format</h3>' +
+                '<pre style="background:#f8f9fa;padding:20px;border-radius:8px;overflow-x:auto;font-size:1.4rem;line-height:1.6"><code>' +
+                escHtml('# neutron.yaml\n\n' +
+                'jobs:\n' +
+                '  build:                              # Job name\n' +
+                '    image: maven:3.9-eclipse-temurin-17  # Docker image\n' +
+                '    trigger: [PUSH, MR]                # Trigger events\n' +
+                '    resources:                         # Optional resource limits\n' +
+                '      limits:\n' +
+                '        cpu: "2"\n' +
+                '        memory: "4Gi"\n' +
+                '      requests:\n' +
+                '        cpu: "500m"\n' +
+                '        memory: "1Gi"\n' +
+                '    steps:\n' +
+                '      - name: test\n' +
+                '        cmd: mvn test\n' +
+                '      - name: build\n' +
+                '        cmd: mvn package -DskipTests\n' +
+                '\n' +
+                '  deploy:                             # Another job\n' +
+                '    image: alpine:latest\n' +
+                '    trigger: [TAG]                     # Only on tag\n' +
+                '    steps:\n' +
+                '      - name: deploy\n' +
+                '        cmd: echo "Deploying..."') +
+                '</code></pre>' +
+            '</div>' +
+            '<div class="card">' +
+                '<h3 style="margin-bottom:16px">Configuration Reference</h3>' +
+                '<table style="width:100%;font-size:1.4rem">' +
+                    '<thead><tr><th style="text-align:left;padding:8px;border-bottom:2px solid #e5e7eb">Field</th><th style="text-align:left;padding:8px;border-bottom:2px solid #e5e7eb">Description</th><th style="text-align:left;padding:8px;border-bottom:2px solid #e5e7eb">Example</th></tr></thead>' +
+                    '<tbody>' +
+                        '<tr><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>image</code></td><td style="padding:8px;border-bottom:1px solid #f3f4f6">Docker image for the job</td><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>node:18</code></td></tr>' +
+                        '<tr><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>trigger</code></td><td style="padding:8px;border-bottom:1px solid #f3f4f6">Events that trigger the job</td><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>[PUSH, MR, TAG]</code></td></tr>' +
+                        '<tr><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>resources.limits.cpu</code></td><td style="padding:8px;border-bottom:1px solid #f3f4f6">Maximum CPU cores</td><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>"2"</code>, <code>"500m"</code></td></tr>' +
+                        '<tr><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>resources.limits.memory</code></td><td style="padding:8px;border-bottom:1px solid #f3f4f6">Maximum memory</td><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>"4Gi"</code>, <code>"512Mi"</code></td></tr>' +
+                        '<tr><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>resources.requests.cpu</code></td><td style="padding:8px;border-bottom:1px solid #f3f4f6">Requested CPU cores</td><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>"500m"</code></td></tr>' +
+                        '<tr><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>resources.requests.memory</code></td><td style="padding:8px;border-bottom:1px solid #f3f4f6">Requested memory</td><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>"1Gi"</code></td></tr>' +
+                        '<tr><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>steps[].name</code></td><td style="padding:8px;border-bottom:1px solid #f3f4f6">Step display name</td><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>build</code></td></tr>' +
+                        '<tr><td style="padding:8px"><code>steps[].cmd</code></td><td style="padding:8px">Shell command to execute</td><td style="padding:8px"><code>mvn clean package</code></td></tr>' +
+                    '</tbody>' +
+                '</table>' +
+            '</div>' +
+            '<div class="card">' +
+                '<h3 style="margin-bottom:16px">Trigger Types</h3>' +
+                '<ul style="padding-left:20px;line-height:2">' +
+                    '<li><strong>PUSH</strong> — Triggered on git push to any branch</li>' +
+                    '<li><strong>MR</strong> — Triggered on merge request creation or update</li>' +
+                    '<li><strong>TAG</strong> — Triggered on tag creation</li>' +
+                '</ul>' +
+            '</div>';
     }
 
     // --- Projects List ---
