@@ -20,6 +20,7 @@ import (
 	"neutron/internal/gitlab"
 	"neutron/internal/launcher"
 	"neutron/internal/model"
+	"neutron/internal/ccwork"
 	"neutron/internal/notify"
 	v1 "k8s.io/api/core/v1"
 	"os"
@@ -154,6 +155,9 @@ func main() {
 		notifyClient = notify.NewClient(config.Notify.Url, config.Notify.CorpId, config.Notify.AppId, config.Notify.SkipTLSVerify)
 	}
 
+	// Initialize CCWork robot client
+	ccworkRobot := ccwork.NewRobot(config.Notify.SkipTLSVerify)
+
 	kubeConfig, err := rest.InClusterConfig()
 	if err != nil {
 		kubeConfig, err = clientcmd.BuildConfigFromFlags("", config.Kubernetes.KubeConfig)
@@ -267,6 +271,48 @@ func main() {
 			return
 		}
 		if err := repo.RemoveNotifyRecipient(id, rid); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	r.GET("/api/projects/:id/ccwebhooks", func(c *gin.Context) {
+		id := c.Param("id")
+		webhooks, err := repo.ListCCWebhooks(id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"webhooks": webhooks})
+	})
+
+	r.POST("/api/projects/:id/ccwebhooks", func(c *gin.Context) {
+		id := c.Param("id")
+		var req struct {
+			WebhookUrl  string `json:"webhook_url"`
+			Description string `json:"description"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.WebhookUrl == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "webhook_url is required"})
+			return
+		}
+		webhook := internal.CCWebhook{ProjectId: id, WebhookUrl: req.WebhookUrl, Description: req.Description}
+		if err := repo.AddCCWebhook(webhook); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"id": webhook.Id, "project_id": id, "webhook_url": req.WebhookUrl, "description": req.Description})
+	})
+
+	r.DELETE("/api/projects/:id/ccwebhooks/:wid", func(c *gin.Context) {
+		id := c.Param("id")
+		wid, err := strconv.ParseInt(c.Param("wid"), 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid webhook id"})
+			return
+		}
+		if err := repo.RemoveCCWebhook(id, wid); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -423,20 +469,27 @@ func main() {
 		// Mark job completed and asynchronously sync final pod phase
 		if status.Succeeded > 0 || status.Failed > 0 {
 			// Notify recipients: pipeline completed
-			if notifyClient != nil {
-				if dbJob, err := repo.GetJobByName(jobName); err == nil {
+			if dbJob, err := repo.GetJobByName(jobName); err == nil {
+				statusUrl := fmt.Sprintf("%s/#/status/%s", config.Host, jobName)
+				var content string
+				if status.Failed > 0 {
+					content = fmt.Sprintf("❌ 流水线执行失败\n\n📂 项目: %s\n📋 任务: %s\n🔗 查看: %s", dbJob.ProjectId, jobName, statusUrl)
+				} else {
+					content = fmt.Sprintf("✅ 流水线执行成功\n\n📂 项目: %s\n📋 任务: %s\n🔗 查看: %s", dbJob.ProjectId, jobName, statusUrl)
+				}
+				if notifyClient != nil {
 					if recipients, err := repo.ListNotifyRecipients(dbJob.ProjectId); err == nil {
-						statusUrl := fmt.Sprintf("%s/#/status/%s", config.Host, jobName)
-						var content string
-						if status.Failed > 0 {
-							content = fmt.Sprintf("❌ 流水线执行失败\n\n📂 项目: %s\n📋 任务: %s\n🔗 查看: %s", dbJob.ProjectId, jobName, statusUrl)
-						} else {
-							content = fmt.Sprintf("✅ 流水线执行成功\n\n📂 项目: %s\n📋 任务: %s\n🔗 查看: %s", dbJob.ProjectId, jobName, statusUrl)
-						}
 						for _, r := range recipients {
 							go notifyClient.SendMessage(r.UserId, content)
 						}
 					}
+				}
+				if webhooks, err := repo.ListCCWebhooks(dbJob.ProjectId); err == nil && len(webhooks) > 0 {
+					ccWebhooks := make([]ccwork.Webhook, len(webhooks))
+					for i, w := range webhooks {
+						ccWebhooks[i] = ccwork.Webhook{Url: w.WebhookUrl, Description: w.Description}
+					}
+					go ccworkRobot.SendToAll(ccWebhooks, content)
 				}
 			}
 			finalPhase := "Succeeded"
@@ -652,13 +705,22 @@ func main() {
 		}
 
 		// Notify recipients: pipeline triggered
-		if len(jobs) > 0 && notifyClient != nil {
-			if recipients, err := repo.ListNotifyRecipients(id); err == nil {
-				statusUrl := fmt.Sprintf("%s/#/status/%s", config.Host, jobs[0])
-				content := fmt.Sprintf("🚀 流水线触发通知\n\n📂 项目: %s\n🔄 触发: %s\n🔗 查看: %s", webhookConfig.RepoUrl, pTrigger, statusUrl)
-				for _, r := range recipients {
-					go notifyClient.SendMessage(r.UserId, content)
+		if len(jobs) > 0 {
+			statusUrl := fmt.Sprintf("%s/#/status/%s", config.Host, jobs[0])
+			content := fmt.Sprintf("🚀 流水线触发通知\n\n📂 项目: %s\n🔄 触发: %s\n🔗 查看: %s", webhookConfig.RepoUrl, pTrigger, statusUrl)
+			if notifyClient != nil {
+				if recipients, err := repo.ListNotifyRecipients(id); err == nil {
+					for _, r := range recipients {
+						go notifyClient.SendMessage(r.UserId, content)
+					}
 				}
+			}
+			if webhooks, err := repo.ListCCWebhooks(id); err == nil && len(webhooks) > 0 {
+				ccWebhooks := make([]ccwork.Webhook, len(webhooks))
+				for i, w := range webhooks {
+					ccWebhooks[i] = ccwork.Webhook{Url: w.WebhookUrl, Description: w.Description}
+				}
+				go ccworkRobot.SendToAll(ccWebhooks, content)
 			}
 		}
 

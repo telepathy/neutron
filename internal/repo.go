@@ -59,6 +59,18 @@ func (NotifyRecipient) TableName() string {
 	return "neutron_notify"
 }
 
+type CCWebhook struct {
+	Id          int64      `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	ProjectId   string     `gorm:"column:project_id;type:char(36);index" json:"project_id"`
+	WebhookUrl  string     `gorm:"column:webhook_url;type:varchar(500)" json:"webhook_url"`
+	Description string     `gorm:"column:description;type:varchar(200)" json:"description"`
+	CreatedAt   *time.Time `gorm:"column:created_at" json:"created_at"`
+}
+
+func (CCWebhook) TableName() string {
+	return "neutron_ccwebhook"
+}
+
 type JobStatus struct {
 	WebhookType string `json:"webhook_type"`
 	RepoUrl     string `json:"repo_url"`
@@ -83,7 +95,7 @@ func NewRepository(config model.Config) *Repository {
 	}
 
 	// Auto-migrate tables
-	if err := db.AutoMigrate(&PipelineProject{}, &PipelineJob{}, &PipelinePod{}, &NotifyRecipient{}); err != nil {
+	if err := db.AutoMigrate(&PipelineProject{}, &PipelineJob{}, &PipelinePod{}, &NotifyRecipient{}, &CCWebhook{}); err != nil {
 		log.Fatalf("failed to auto-migrate database: %v", err)
 	}
 
@@ -206,4 +218,18 @@ func (r *Repository) AddNotifyRecipient(recipient NotifyRecipient) error {
 
 func (r *Repository) RemoveNotifyRecipient(projectId string, id int64) error {
 	return r.db.Where("project_id = ? AND id = ?", projectId, id).Delete(&NotifyRecipient{}).Error
+}
+
+func (r *Repository) ListCCWebhooks(projectId string) ([]CCWebhook, error) {
+	var webhooks []CCWebhook
+	err := r.db.Where("project_id = ?", projectId).Order("id").Find(&webhooks).Error
+	return webhooks, err
+}
+
+func (r *Repository) AddCCWebhook(webhook CCWebhook) error {
+	return r.db.Create(&webhook).Error
+}
+
+func (r *Repository) RemoveCCWebhook(projectId string, id int64) error {
+	return r.db.Where("project_id = ? AND id = ?", projectId, id).Delete(&CCWebhook{}).Error
 }
