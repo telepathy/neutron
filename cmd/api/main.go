@@ -16,12 +16,13 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"net/http"
 	"neutron/internal"
+	"neutron/internal/ccwork"
 	"neutron/internal/codeup"
 	"neutron/internal/gitlab"
 	"neutron/internal/launcher"
 	"neutron/internal/model"
-	"neutron/internal/ccwork"
 	"neutron/internal/notify"
+	"neutron/internal/parser"
 	v1 "k8s.io/api/core/v1"
 	"os"
 	"os/signal"
@@ -737,6 +738,137 @@ func main() {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "pipeline": pipeline, "jobs": jobs})
+	})
+
+	// Trigger API: programmatically trigger a pipeline job
+	r.POST("/api/trigger", func(c *gin.Context) {
+		var req struct {
+			RepoUrl string            `json:"repo_url"`
+			JobName string            `json:"job_name"`
+			Ref     string            `json:"ref"`
+			Env     map[string]string `json:"env"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if req.RepoUrl == "" || req.JobName == "" || req.Ref == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "repo_url, job_name, and ref are required"})
+			return
+		}
+
+		// Find project by repo URL
+		project := repo.GetProjectByRepoUrl(req.RepoUrl)
+		if project.Id == "" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "project not found for repo_url: " + req.RepoUrl})
+			return
+		}
+		platform := project.WebhookType
+
+		// Get platform config
+		baseCfg, ok := config.BaseConfig[platform]
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("platform %s not configured", platform)})
+			return
+		}
+		podCfg := baseCfg
+		if pod, ok := config.PodCodeBase[platform]; ok {
+			podCfg = pod
+		}
+
+		// Fetch neutron.yaml from repo at given ref
+		pipeline, err := parser.FetchPipeline(platform, req.RepoUrl, req.Ref, baseCfg.Url, baseCfg.Token, baseCfg.SkipTLSVerify)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to fetch pipeline: %v", err)})
+			return
+		}
+
+		// Find the specified job
+		job, ok := pipeline.Jobs[req.JobName]
+		if !ok {
+			c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("job '%s' not found in pipeline", req.JobName)})
+			return
+		}
+
+		// Build runner config
+		runnerConfig := model.RunnerConfig{
+			CodebaseToken:    podCfg.Token,
+			CodebaseUrl:      podCfg.Url,
+			ProjectId:        "api",
+			CommitSha:        req.Ref,
+			ReportSha:        req.Ref,
+			JobName:          req.JobName,
+			Trigger:          "API",
+			GitRepoUrl:       req.RepoUrl,
+			GitPrivateKey:    "/etc/ssh/id_rsa",
+			SkipTriggerCheck: true,
+		}
+
+		// Build extra env vars
+		var extraEnv []v1.EnvVar
+		extraEnv = append(extraEnv, v1.EnvVar{Name: "RUNNER_PLATFORM", Value: strings.ToLower(platform)})
+		if podCfg.SkipTLSVerify {
+			extraEnv = append(extraEnv, v1.EnvVar{Name: "SKIP_TLS_VERIFY", Value: "true"})
+		}
+		// Inject user-provided env vars
+		for key, value := range req.Env {
+			extraEnv = append(extraEnv, v1.EnvVar{Name: key, Value: value})
+		}
+
+		// Create K8s Job
+		l := launcher.NewLauncher(
+			config.Kubernetes.Namespace,
+			runnerConfig,
+			config.Kubernetes.InitImage,
+			config.Kubernetes.CheckoutImage,
+			job.Image,
+			config.Kubernetes.GitPrivateKey,
+			config.Kubernetes.ImagePullSecrets,
+			platform,
+			config.Kubernetes.PodApiUrl,
+			job.Resources,
+			extraEnv...,
+		)
+		jobClient := clientSet.BatchV1().Jobs(config.Kubernetes.Namespace)
+		createdJob, err := jobClient.Create(context.Background(), l.CreateJob(config.Host), metav1.CreateOptions{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to create job: %v", err)})
+			return
+		}
+
+		// Save job to database
+		if err := repo.AddJob(internal.PipelineJob{
+			ProjectId: project.Id,
+			Name:      createdJob.Name,
+			Status:    "",
+		}); err != nil {
+			log.Printf("failed to save job to database: %v", err)
+		}
+
+		// Send notifications
+		statusUrl := fmt.Sprintf("%s/#/status/%s", config.Host, createdJob.Name)
+		title := "🚀 流水线触发通知 (API)"
+		content := fmt.Sprintf("📂 项目: %s\n📋 作业: %s\n🏷️ Ref: %s\n🔗 查看: %s", req.RepoUrl, req.JobName, req.Ref, statusUrl)
+		if notifyClient != nil {
+			if recipients, err := repo.ListNotifyRecipients(project.Id); err == nil {
+				for _, r := range recipients {
+					go notifyClient.SendMessage(r.UserId, title, content)
+				}
+			}
+		}
+		if webhooks, err := repo.ListCCWebhooks(project.Id); err == nil && len(webhooks) > 0 {
+			ccWebhooks := make([]ccwork.Webhook, len(webhooks))
+			for i, w := range webhooks {
+				ccWebhooks[i] = ccwork.Webhook{Url: w.WebhookUrl, Description: w.Description}
+			}
+			go ccworkRobot.SendToAll(ccWebhooks, title, content)
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":   "ok",
+			"job_name": createdJob.Name,
+			"job_url":  statusUrl,
+		})
 	})
 
 	srv := &http.Server{

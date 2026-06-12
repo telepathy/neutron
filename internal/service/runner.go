@@ -18,7 +18,7 @@ type Runner struct {
 	Reporter   model.Reporter
 }
 
-func NewRunner(workingDir string, triggerType string, jobName string, reporter model.Reporter) *Runner {
+func NewRunner(workingDir string, triggerType string, jobName string, reporter model.Reporter, skipTriggerCheck ...bool) *Runner {
 	data, err := os.ReadFile(path.Join(workingDir, "neutron.yaml"))
 	if err != nil {
 		log.Fatalf(err.Error())
@@ -31,16 +31,20 @@ func NewRunner(workingDir string, triggerType string, jobName string, reporter m
 	if _, ok := pipeline.Jobs[jobName]; !ok {
 		log.Fatalf("pipeline job %s not found", jobName)
 	}
-	matched := false
-	for _, t := range pipeline.Jobs[jobName].Trigger {
-		if t == triggerType {
-			matched = true
-			break
+	// Skip trigger check if requested (e.g. API-triggered jobs)
+	skip := len(skipTriggerCheck) > 0 && skipTriggerCheck[0]
+	if !skip {
+		matched := false
+		for _, t := range pipeline.Jobs[jobName].Trigger {
+			if t == triggerType {
+				matched = true
+				break
+			}
 		}
-	}
-	if !matched {
-		reporter.Report(jobName, "", model.Success, fmt.Sprintf("Current job skipped in %s.", triggerType))
-		os.Exit(0)
+		if !matched {
+			reporter.Report(jobName, "", model.Success, fmt.Sprintf("Current job skipped in %s.", triggerType))
+			os.Exit(0)
+		}
 	}
 	return &Runner{
 		WorkingDir: workingDir,

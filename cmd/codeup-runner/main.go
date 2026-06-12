@@ -15,6 +15,7 @@ func main() {
 	webhookType := os.Getenv("RUNNER_PLATFORM")
 
 	skipTLS := strings.EqualFold(os.Getenv("SKIP_TLS_VERIFY"), "true")
+	skipTriggerCheck := strings.EqualFold(os.Getenv("SKIP_TRIGGER_CHECK"), "true")
 
 	// Composite: NoOp + Neutron
 	noopReporter := NewNoOpReporter()
@@ -22,6 +23,6 @@ func main() {
 	neutronReporter.RegisterPod(os.Getenv("POD_NAME"), os.Getenv("POD_NAMESPACE"))
 	composite := reporter.NewComposite(noopReporter, neutronReporter)
 
-	runner := service.NewRunner("/repo", triggerType, jobName, composite)
+	runner := service.NewRunner("/repo", triggerType, jobName, composite, skipTriggerCheck)
 	runner.Run()
 }

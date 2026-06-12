@@ -135,6 +135,15 @@ func (r *Repository) ListProjects() ([]PipelineProject, error) {
 	return projects, err
 }
 
+func (r *Repository) GetProjectByRepoUrl(repoUrl string) PipelineProject {
+	var project PipelineProject
+	result := r.db.Where("repo_url = ?", repoUrl).First(&project)
+	if result.Error != nil {
+		return PipelineProject{}
+	}
+	return project
+}
+
 func (r *Repository) AddJob(job PipelineJob) error {
 	return r.db.Create(&job).Error
 }

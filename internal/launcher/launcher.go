@@ -78,6 +78,9 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 			FieldRef: &v1.ObjectFieldSelector{FieldPath: "metadata.namespace"},
 		}},
 	}
+	if l.RunnerConfig.SkipTriggerCheck {
+		env = append(env, v1.EnvVar{Name: "SKIP_TRIGGER_CHECK", Value: "true"})
+	}
 	env = append(env, l.ExtraEnv...)
 
 	job := &batchv1.Job{

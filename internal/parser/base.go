@@ -1,13 +1,16 @@
 package parser
 
 import (
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"gopkg.in/yaml.v3"
 	"io"
 	"net/http"
+	"net/url"
 	"neutron/internal/model"
+	"time"
 )
 
 const MaxBodySize = 1 << 20 // 1MB
@@ -90,4 +93,48 @@ func DetectTrigger(webhookType, codeSha, lastCommitId, targetBranch string) (tri
 	default:
 		return "", "", "", "", fmt.Errorf("unsupported webhook type: %s", webhookType)
 	}
+}
+
+// FetchPipeline fetches neutron.yaml from a repository at the given ref.
+// It constructs the platform-specific API path from the repo URL.
+func FetchPipeline(platform, repoUrl, ref string, codebaseUrl, codebaseToken string, skipTLS bool) (model.Pipeline, error) {
+	var accessApiPath, authHeader string
+
+	switch platform {
+	case "GitLab":
+		projectPath := ExtractGitLabProjectPath(repoUrl)
+		if projectPath == "" {
+			return model.Pipeline{}, fmt.Errorf("cannot extract project path from URL: %s", repoUrl)
+		}
+		encodedPath := url.PathEscape(projectPath)
+		accessApiPath = fmt.Sprintf("%s/api/v4/projects/%s/repository/files/neutron.yaml", codebaseUrl, encodedPath)
+		authHeader = "PRIVATE-TOKEN"
+	case "Codeup":
+		orgId, projectPath := ExtractCodeupOrgAndProject(repoUrl)
+		if orgId == "" || projectPath == "" {
+			return model.Pipeline{}, fmt.Errorf("cannot extract org-id and project path from URL: %s", repoUrl)
+		}
+		encodedProjectPath := EncodeCodeupProjectPath(projectPath)
+		accessApiPath = fmt.Sprintf("%s/oapi/v1/codeup/organizations/%s/repositories/%s/files/neutron.yaml", codebaseUrl, orgId, encodedProjectPath)
+		authHeader = "x-yunxiao-token"
+	default:
+		return model.Pipeline{}, fmt.Errorf("unsupported platform: %s", platform)
+	}
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: skipTLS},
+		},
+	}
+
+	base := Base{
+		AccessApiPath:  accessApiPath,
+		AccessToken:    codebaseToken,
+		AuthHeaderName: authHeader,
+		Client:         client,
+		CodeSha:        ref,
+	}
+
+	return base.Parse()
 }

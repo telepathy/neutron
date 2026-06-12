@@ -27,17 +27,18 @@ type ResourceSpec struct {
 }
 
 type RunnerConfig struct {
-	CodebaseToken string // codebase access token
-	CodebaseUrl   string // codebase API base URL
-	ProjectId     string
-	CommitSha     string
-	ReportSha     string // GitLab: commit SHA for status reporting; Codeup: unused
-	Trigger       string
-	JobName       string
-	GitRepoUrl    string
-	GitPrivateKey string
-	PipelineUrl   string
-	TargetBranch  string // MR target branch, GitLab only
+	CodebaseToken    string // codebase access token
+	CodebaseUrl      string // codebase API base URL
+	ProjectId        string
+	CommitSha        string
+	ReportSha        string // GitLab: commit SHA for status reporting; Codeup: unused
+	Trigger          string
+	JobName          string
+	GitRepoUrl       string
+	GitPrivateKey    string
+	PipelineUrl      string
+	TargetBranch     string // MR target branch, GitLab only
+	SkipTriggerCheck bool   // skip trigger type validation (for API-triggered jobs)
 }
 
 type StepResult string
