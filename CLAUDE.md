@@ -31,6 +31,7 @@ go test ./...
 - `GET /api/config` — returns runtime config (log URL template, namespace) for SPA
 - `POST /api/register` — registers a project webhook (stores in MySQL with UUID)
 - `POST /webhook/:id` — receives webhooks, auto-detects platform (GitLab/Codeup) via `X-Codeup-Event` header, fetches `neutron.yaml`, creates K8s Jobs. Query params on the webhook URL are passed as env vars to the pod.
+- `POST /api/trigger` — programmatic pipeline trigger by repo URL, job name, ref, and custom env vars (bypasses trigger type validation)
 - `GET /api/projects` — lists all registered projects
 - `GET /api/projects/:id/jobs` — lists jobs for a project (last 7 days)
 - `GET /api/status/:jobName` — job/pod status (JSON, from DB for completed jobs or K8s API for active jobs)
@@ -60,9 +61,10 @@ go test ./...
 
 - `internal/gitlab/` — GitLab webhook parsing (`parser.go`)
 - `internal/codeup/` — Codeup webhook parsing (`parser.go`)
+- `internal/parser/` — shared parsing logic: `base.go` (fetch neutron.yaml), `path.go` (repo URL → API path conversion for GitLab `%2F` and Codeup `%252F`)
 - `internal/launcher/` — shared K8s Job creation (platform-agnostic)
 - `internal/model/` — domain models: `Config`, `Pipeline`, `Job`, `Step`, `RunnerConfig` + interfaces: `Reporter`, `PipelineParser`
-- `internal/service/` — `Runner` (step execution)
+- `internal/service/` — `Runner` (step execution, supports `SkipTriggerCheck`)
 - `internal/repo.go` — MySQL data access (Repository pattern)
 - `internal/notify/` — IM notification client (enterprise messaging, attachment format)
 - `internal/ccwork/` — CCWork robot webhook client (group notifications, attachment format)
@@ -101,6 +103,32 @@ POST https://neutron.example.com/webhook/abc-123?DEPLOY_ENV=prod&IMAGE_TAG=v1.2.
 ```
 
 All query parameters are injected as environment variables into the K8s Job's main container. Step commands can reference them directly via `$DEPLOY_ENV`, `$IMAGE_TAG`, etc.
+
+### Trigger API
+
+Programmatic pipeline trigger without webhook. Bypasses job trigger type validation.
+
+```
+POST /api/trigger
+Content-Type: application/json
+
+{
+  "repo_url": "git@gitlab.example.com:group/project.git",
+  "job_name": "deploy",
+  "ref": "v1.2.3",
+  "env": {
+    "DEPLOY_ENV": "prod",
+    "IMAGE_TAG": "v1.2.3"
+  }
+}
+```
+
+- `repo_url` — must match a registered project's repo URL exactly
+- `job_name` — the job to execute (from `neutron.yaml`)
+- `ref` — git ref to checkout (tag, branch, or commit SHA)
+- `env` — optional key-value pairs injected as environment variables
+
+Works for both GitLab and Codeup platforms. The repo URL is converted to a platform-specific API path to fetch `neutron.yaml` at the given ref.
 
 ## Conventions
 

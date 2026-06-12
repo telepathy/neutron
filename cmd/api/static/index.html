@@ -518,6 +518,36 @@
                     '        cmd: echo "Deploying $IMAGE_TAG to $DEPLOY_ENV"') +
                 '</pre>' +
                 '<p style="margin-top:12px;color:#999;font-size:1.3rem">Note: Parameter names should use UPPER_SNAKE_CASE and must not conflict with built-in env vars (JOB_NAME, TRIGGER, COMMIT_SHA, etc.).</p>' +
+            '</div>' +
+            '<div class="card">' +
+                '<h3 style="margin-bottom:16px">Trigger API</h3>' +
+                '<p style="margin-bottom:12px">Trigger a pipeline programmatically without a webhook. This bypasses job trigger type validation — the specified job will always execute regardless of its trigger configuration.</p>' +
+                '<p style="margin-bottom:8px;font-size:1.4rem;font-weight:600;color:#222">Endpoint:</p>' +
+                '<pre style="background:#f8f9fa;padding:16px;border-radius:8px;overflow-x:auto;font-size:1.3rem;line-height:1.5">' +
+                escHtml('POST /api/trigger\nContent-Type: application/json') +
+                '</pre>' +
+                '<p style="margin:12px 0 8px;font-size:1.4rem;font-weight:600;color:#222">Request body:</p>' +
+                '<pre style="background:#f8f9fa;padding:16px;border-radius:8px;overflow-x:auto;font-size:1.3rem;line-height:1.5">' +
+                escHtml('{\n' +
+                    '  "repo_url": "git@gitlab.example.com:group/project.git",\n' +
+                    '  "job_name": "deploy",\n' +
+                    '  "ref": "v1.2.3",\n' +
+                    '  "env": {\n' +
+                    '    "DEPLOY_ENV": "prod",\n' +
+                    '    "IMAGE_TAG": "v1.2.3"\n' +
+                    '  }\n' +
+                    '}') +
+                '</pre>' +
+                '<table style="width:100%;font-size:1.4rem;margin-top:12px">' +
+                    '<thead><tr><th style="text-align:left;padding:8px;border-bottom:2px solid #e5e7eb">Field</th><th style="text-align:left;padding:8px;border-bottom:2px solid #e5e7eb">Description</th><th style="text-align:left;padding:8px;border-bottom:2px solid #e5e7eb">Required</th></tr></thead>' +
+                    '<tbody>' +
+                        '<tr><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>repo_url</code></td><td style="padding:8px;border-bottom:1px solid #f3f4f6">Repository SSH URL (must match a registered project)</td><td style="padding:8px;border-bottom:1px solid #f3f4f6">Yes</td></tr>' +
+                        '<tr><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>job_name</code></td><td style="padding:8px;border-bottom:1px solid #f3f4f6">Job name from neutron.yaml</td><td style="padding:8px;border-bottom:1px solid #f3f4f6">Yes</td></tr>' +
+                        '<tr><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>ref</code></td><td style="padding:8px;border-bottom:1px solid #f3f4f6">Git ref to checkout (tag, branch, or commit SHA)</td><td style="padding:8px;border-bottom:1px solid #f3f4f6">Yes</td></tr>' +
+                        '<tr><td style="padding:8px"><code>env</code></td><td style="padding:8px">Custom environment variables for the pipeline pod</td><td style="padding:8px">No</td></tr>' +
+                    '</tbody>' +
+                '</table>' +
+                '<p style="margin-top:12px;color:#999;font-size:1.3rem">Works for both GitLab and Codeup projects.</p>' +
             '</div>';
     }
 
