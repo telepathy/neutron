@@ -14,6 +14,7 @@ func main() {
 	jobName := os.Getenv("JOB_NAME")
 	triggerType := os.Getenv("TRIGGER")
 	webhookType := os.Getenv("RUNNER_PLATFORM")
+	repoUrl := os.Getenv("GIT_REPO_URL")
 
 	skipTLS := strings.EqualFold(os.Getenv("SKIP_TLS_VERIFY"), "true")
 	skipTriggerCheck := strings.EqualFold(os.Getenv("SKIP_TRIGGER_CHECK"), "true")
@@ -25,7 +26,7 @@ func main() {
 	}
 
 	// Composite: GitLab + Neutron
-	neutronReporter := reporter.NewNeutron(apiUrl, fullJobName, triggerType, webhookType, skipTLS)
+	neutronReporter := reporter.NewNeutron(apiUrl, fullJobName, triggerType, webhookType, repoUrl, skipTLS)
 	neutronReporter.RegisterPod(os.Getenv("POD_NAME"), os.Getenv("POD_NAMESPACE"))
 	composite := reporter.NewComposite(gitlabReporter, neutronReporter)
 

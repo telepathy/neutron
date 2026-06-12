@@ -16,15 +16,17 @@ type Neutron struct {
 	jobName     string
 	triggerType string
 	webhookType string
+	repoUrl     string
 	client      *http.Client
 }
 
-func NewNeutron(apiUrl string, jobName string, triggerType string, webhookType string, skipTLSVerify bool) *Neutron {
+func NewNeutron(apiUrl string, jobName string, triggerType string, webhookType string, repoUrl string, skipTLSVerify bool) *Neutron {
 	return &Neutron{
 		apiUrl:      apiUrl,
 		jobName:     jobName,
 		triggerType: triggerType,
 		webhookType: webhookType,
+		repoUrl:     repoUrl,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 			Transport: &http.Transport{
@@ -66,6 +68,7 @@ func (r *Neutron) Report(jobName string, stepName string, status model.StepResul
 	payload := map[string]interface{}{
 		"webhook_type": r.webhookType,
 		"trigger_type": r.triggerType,
+		"repo_url":     r.repoUrl,
 		"active":       0,
 		"succeeded":    0,
 		"failed":       0,
