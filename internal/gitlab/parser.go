@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"neutron/internal/parser"
 	"time"
 )
@@ -19,8 +20,9 @@ type WebhookRequest struct {
 }
 
 type Project struct {
-	Id      int    `json:"id"`
-	RepoUrl string `json:"http_url"`
+	Id        int    `json:"id"`
+	RepoUrl   string `json:"http_url"`
+	GitSshUrl string `json:"git_ssh_url"`
 }
 
 type Attributes struct {
@@ -57,9 +59,16 @@ func NewGitLabParser(requestBody io.ReadCloser, gitlabHost string, token string,
 	if ref == "" {
 		return nil, fmt.Errorf("missing commit SHA in webhook payload (type: %s)", request.WebhookType)
 	}
-	if request.Project.Id == 0 {
-		return nil, fmt.Errorf("missing project ID in webhook payload")
+
+	// Construct API path from SSH URL instead of project ID
+	if request.Project.GitSshUrl == "" {
+		return nil, fmt.Errorf("missing git_ssh_url in webhook payload")
 	}
+	projectPath := parser.ExtractGitLabProjectPath(request.Project.GitSshUrl)
+	if projectPath == "" {
+		return nil, fmt.Errorf("cannot extract project path from SSH URL: %s", request.Project.GitSshUrl)
+	}
+	encodedPath := url.PathEscape(projectPath)
 
 	client := &http.Client{
 		Timeout: 30 * time.Second,
@@ -69,7 +78,7 @@ func NewGitLabParser(requestBody io.ReadCloser, gitlabHost string, token string,
 	}
 	return &Parser{
 		Base: parser.Base{
-			AccessApiPath: fmt.Sprintf("%s/api/v4/projects/%d/repository/files/neutron.yaml", gitlabHost, request.Project.Id),
+			AccessApiPath: fmt.Sprintf("%s/api/v4/projects/%s/repository/files/neutron.yaml", gitlabHost, encodedPath),
 			AccessToken:   token,
 			Client:        client,
 			CodeSha:       ref,

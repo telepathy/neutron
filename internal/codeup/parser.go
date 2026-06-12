@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"neutron/internal/parser"
-	"strings"
 	"time"
 )
 
@@ -46,21 +45,6 @@ type Parser struct {
 	Request WebhookRequest
 }
 
-// extractOrgId extracts the organization ID from a Codeup repository URL.
-// e.g. "http://codeup.devops.csdc.com/codeup/f6e73c53-.../SZ/repo.git" → "f6e73c53-..."
-func extractOrgId(gitHttpUrl string) string {
-	idx := strings.Index(gitHttpUrl, "/codeup/")
-	if idx < 0 {
-		return ""
-	}
-	rest := gitHttpUrl[idx+len("/codeup/"):]
-	parts := strings.SplitN(rest, "/", 2)
-	if len(parts) == 0 || parts[0] == "" {
-		return ""
-	}
-	return parts[0]
-}
-
 func NewCodeupParser(requestBody io.ReadCloser, codeupHost string, token string, skipTLSVerify bool) (*Parser, error) {
 	body, err := parser.ReadBody(requestBody)
 	if err != nil {
@@ -80,23 +64,16 @@ func NewCodeupParser(requestBody io.ReadCloser, codeupHost string, token string,
 	if ref == "" {
 		return nil, fmt.Errorf("missing commit SHA in webhook payload (type: %s)", request.WebhookType)
 	}
-	projectId := request.Project.Id
-	if projectId == 0 {
-		projectId = request.ProjectId
-	}
-	if projectId == 0 {
-		projectId = request.Attributes.ProjectId
-	}
-	if projectId == 0 {
-		return nil, fmt.Errorf("missing project ID in webhook payload")
-	}
 
-	// Extract orgId from repository git_http_url
-	// e.g. http://codeup.devops.csdc.com/codeup/f6e73c53-f6ad-447a-b1c6-083e28f9b814/SZ/.../repo.git
-	orgId := extractOrgId(request.Repository.GitHttpUrl)
-	if orgId == "" {
-		return nil, fmt.Errorf("cannot extract organization ID from repository URL: %s", request.Repository.GitHttpUrl)
+	// Construct API path from SSH URL instead of project ID
+	if request.Repository.GitSshUrl == "" {
+		return nil, fmt.Errorf("missing git_ssh_url in webhook payload")
 	}
+	orgId, projectPath := parser.ExtractCodeupOrgAndProject(request.Repository.GitSshUrl)
+	if orgId == "" || projectPath == "" {
+		return nil, fmt.Errorf("cannot extract org-id and project path from SSH URL: %s", request.Repository.GitSshUrl)
+	}
+	encodedProjectPath := parser.EncodeCodeupProjectPath(projectPath)
 
 	client := &http.Client{
 		Timeout: 30 * time.Second,
@@ -106,7 +83,7 @@ func NewCodeupParser(requestBody io.ReadCloser, codeupHost string, token string,
 	}
 	return &Parser{
 		Base: parser.Base{
-			AccessApiPath:  fmt.Sprintf("%s/oapi/v1/codeup/organizations/%s/repositories/%d/files/neutron.yaml", codeupHost, orgId, projectId),
+			AccessApiPath:  fmt.Sprintf("%s/oapi/v1/codeup/organizations/%s/repositories/%s/files/neutron.yaml", codeupHost, orgId, encodedProjectPath),
 			AccessToken:    token,
 			AuthHeaderName: "x-yunxiao-token",
 			Client:         client,
