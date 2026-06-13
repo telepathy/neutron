@@ -81,6 +81,9 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 	if l.RunnerConfig.SkipTriggerCheck {
 		env = append(env, v1.EnvVar{Name: "SKIP_TRIGGER_CHECK", Value: "true"})
 	}
+	if l.RunnerConfig.SkipPlatformReport {
+		env = append(env, v1.EnvVar{Name: "SKIP_PLATFORM_REPORT", Value: "true"})
+	}
 	env = append(env, l.ExtraEnv...)
 
 	job := &batchv1.Job{

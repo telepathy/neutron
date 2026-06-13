@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"neutron/internal/model"
 	"neutron/internal/reporter"
 	"neutron/internal/service"
 	"os"
@@ -18,17 +19,24 @@ func main() {
 
 	skipTLS := strings.EqualFold(os.Getenv("SKIP_TLS_VERIFY"), "true")
 	skipTriggerCheck := strings.EqualFold(os.Getenv("SKIP_TRIGGER_CHECK"), "true")
+	skipPlatformReport := strings.EqualFold(os.Getenv("SKIP_PLATFORM_REPORT"), "true")
 
-	// GitLab reporter for commit statuses
-	gitlabReporter, err := NewGitlabReporterFromEnv(skipTLS)
-	if err != nil {
-		log.Fatalf("failed to create gitlab reporter: %v", err)
-	}
-
-	// Composite: GitLab + Neutron
+	// Neutron reporter (always used)
 	neutronReporter := reporter.NewNeutron(apiUrl, fullJobName, triggerType, webhookType, repoUrl, skipTLS)
 	neutronReporter.RegisterPod(os.Getenv("POD_NAME"), os.Getenv("POD_NAMESPACE"))
-	composite := reporter.NewComposite(gitlabReporter, neutronReporter)
+
+	var composite model.Reporter
+	if skipPlatformReport {
+		// Only report to Neutron, skip GitLab commit statuses
+		composite = neutronReporter
+	} else {
+		// Composite: GitLab + Neutron
+		gitlabReporter, err := NewGitlabReporterFromEnv(skipTLS)
+		if err != nil {
+			log.Fatalf("failed to create gitlab reporter: %v", err)
+		}
+		composite = reporter.NewComposite(gitlabReporter, neutronReporter)
+	}
 
 	runner := service.NewRunner("/repo", triggerType, jobName, composite, skipTriggerCheck)
 	runner.Run()

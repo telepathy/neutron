@@ -792,16 +792,17 @@ func main() {
 
 		// Build runner config
 		runnerConfig := model.RunnerConfig{
-			CodebaseToken:    podCfg.Token,
-			CodebaseUrl:      podCfg.Url,
-			ProjectId:        "api",
-			CommitSha:        req.Ref,
-			ReportSha:        req.Ref,
-			JobName:          req.JobName,
-			Trigger:          "API",
-			GitRepoUrl:       req.RepoUrl,
-			GitPrivateKey:    "/etc/ssh/id_rsa",
-			SkipTriggerCheck: true,
+			CodebaseToken:      podCfg.Token,
+			CodebaseUrl:        podCfg.Url,
+			ProjectId:          "api",
+			CommitSha:          req.Ref,
+			ReportSha:          req.Ref,
+			JobName:            req.JobName,
+			Trigger:            "API",
+			GitRepoUrl:         req.RepoUrl,
+			GitPrivateKey:      "/etc/ssh/id_rsa",
+			SkipTriggerCheck:   true,
+			SkipPlatformReport: true,
 		}
 
 		// Build extra env vars
