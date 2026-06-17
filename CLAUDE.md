@@ -36,6 +36,7 @@ go test ./...
 - `GET /api/projects/:id/jobs` — lists jobs for a project (last 7 days)
 - `GET /api/status/:jobName` — job/pod status (JSON, from DB for completed jobs or K8s API for active jobs)
 - `POST /api/report/:jobName` — runners push status back to API server for persistence
+- `POST /api/report/:jobName/link` — set a test report URL for a job (`{"report_url": "..."}`)
 - `GET/POST/DELETE /api/projects/:id/recipients` — manage IM notification recipients (per-user)
 - `GET/POST/DELETE /api/projects/:id/ccwebhooks` — manage CCWork group webhook URLs (per-project)
 - SPA: `cmd/api/static/index.html` — vanilla JS with hash-based routing (#/, #/projects, #/project/:id, #/status/:name)
@@ -81,6 +82,7 @@ Tables auto-migrated by GORM:
 - `neutron_pod` (id, job_id, pod_name, pod_uid, phase)
 - `neutron_notify` (id, project_id, user_id) — IM notification recipients per project
 - `neutron_ccwebhook` (id, project_id, webhook_url, description) — CCWork group webhooks per project
+- `neutron_job_report` (id, job_name, report_url, created_at) — test report link per job
 
 ### Configuration
 

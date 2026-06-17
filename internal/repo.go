@@ -71,6 +71,17 @@ func (CCWebhook) TableName() string {
 	return "neutron_ccwebhook"
 }
 
+type JobReport struct {
+	Id        int64      `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	JobName   string     `gorm:"column:job_name;type:varchar(255);uniqueIndex" json:"job_name"`
+	ReportUrl string     `gorm:"column:report_url;type:varchar(2048)" json:"report_url"`
+	CreatedAt *time.Time `gorm:"column:created_at" json:"created_at"`
+}
+
+func (JobReport) TableName() string {
+	return "neutron_job_report"
+}
+
 type JobStatus struct {
 	WebhookType string `json:"webhook_type"`
 	RepoUrl     string `json:"repo_url"`
@@ -95,7 +106,7 @@ func NewRepository(config model.Config) *Repository {
 	}
 
 	// Auto-migrate tables
-	if err := db.AutoMigrate(&PipelineProject{}, &PipelineJob{}, &PipelinePod{}, &NotifyRecipient{}, &CCWebhook{}); err != nil {
+	if err := db.AutoMigrate(&PipelineProject{}, &PipelineJob{}, &PipelinePod{}, &NotifyRecipient{}, &CCWebhook{}, &JobReport{}); err != nil {
 		log.Fatalf("failed to auto-migrate database: %v", err)
 	}
 
@@ -241,4 +252,30 @@ func (r *Repository) AddCCWebhook(webhook CCWebhook) error {
 
 func (r *Repository) RemoveCCWebhook(projectId string, id int64) error {
 	return r.db.Where("project_id = ? AND id = ?", projectId, id).Delete(&CCWebhook{}).Error
+}
+
+func (r *Repository) SetJobReportUrl(jobName string, reportUrl string) error {
+	now := time.Now()
+	var existing JobReport
+	result := r.db.Where("job_name = ?", jobName).First(&existing)
+	if result.Error != nil {
+		return r.db.Create(&JobReport{
+			JobName:   jobName,
+			ReportUrl: reportUrl,
+			CreatedAt: &now,
+		}).Error
+	}
+	return r.db.Model(&existing).Updates(map[string]interface{}{
+		"report_url": reportUrl,
+		"created_at": now,
+	}).Error
+}
+
+func (r *Repository) GetJobReportUrl(jobName string) (string, error) {
+	var report JobReport
+	result := r.db.Where("job_name = ?", jobName).First(&report)
+	if result.Error != nil {
+		return "", result.Error
+	}
+	return report.ReportUrl, nil
 }

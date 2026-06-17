@@ -254,19 +254,24 @@ Platform is auto-detected from webhook headers (`X-Codeup-Event` → Codeup, oth
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/config` | Runtime config (log URL template, namespace) |
+| GET | `/api/config` | Runtime config (log URL template, namespace, codebase URLs) |
 | POST | `/api/register` | Register a project, returns JSON with webhook URL |
 | POST | `/webhook/:id` | Receive webhook (GitLab/Codeup auto-detect), create K8s Jobs |
-| GET | `/api/status/:jobName` | Job/pod status (JSON, from DB or K8s API) |
+| GET | `/api/status/:jobName` | Job/pod status (JSON, from DB or K8s API). Includes `reportUrl` if set |
+| POST | `/api/report/:jobName/link` | Set a test report URL for a job (`{"report_url": "..."}`) |
 
-The frontend is a vanilla JS SPA served from `/` (hash-based routing: `#/register`, `#/status/:jobName`). Pod names on the status page link to an external log platform if `log_url` is configured.
+The frontend is a vanilla JS SPA served from `/` (hash-based routing: `#/`, `#/projects`, `#/project/:id`, `#/status/:jobName`). Pod names on the status page link to an external log platform if `log_url` is configured. When a test report URL is set via the API, a "查看测试报告" button appears on the job detail page.
 
 ## Database schema
 
-Two tables (`dds.sql`):
+Tables (auto-migrated by GORM):
 
-- **project** — registered projects (`id`, `webhook_type`, `repo_url`)
-- **job** — K8s job metadata (`id`, `project_id`, `name`, `status` as JSON)
+- **neutron_project** — registered projects (`id`, `webhook_type`, `repo_url`)
+- **neutron_job** — K8s job metadata (`id`, `project_id`, `name`, `status` as JSON, `completed`, `completed_at`)
+- **neutron_pod** — pod records per job (`id`, `job_id`, `pod_name`, `pod_uid`, `phase`)
+- **neutron_notify** — IM notification recipients per project (`id`, `project_id`, `user_id`)
+- **neutron_ccwebhook** — CCWork group webhook URLs per project (`id`, `project_id`, `webhook_url`, `description`)
+- **neutron_job_report** — test report link per job (`id`, `job_name`, `report_url`, `created_at`)
 
 ## Project structure
 

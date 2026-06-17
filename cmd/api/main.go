@@ -361,12 +361,17 @@ func main() {
 					"status":   gin.H{"phase": pod.Phase},
 				})
 			}
+			var reportUrl string
+			if url, err := repo.GetJobReportUrl(jobName); err == nil {
+				reportUrl = url
+			}
 			c.JSON(http.StatusOK, gin.H{
-				"jobName": jobName,
-				"status":  status,
-				"job":     gin.H{"metadata": gin.H{"name": jobName}},
-				"pods":    gin.H{"items": podItems},
-				"source":  "database",
+				"jobName":   jobName,
+				"status":    status,
+				"job":       gin.H{"metadata": gin.H{"name": jobName}},
+				"pods":      gin.H{"items": podItems},
+				"source":    "database",
+				"reportUrl": reportUrl,
 			})
 			return
 		}
@@ -436,12 +441,17 @@ func main() {
 			_ = repo.MarkJobCompleted(jobName)
 		}
 
+		var reportUrl string
+		if url, err := repo.GetJobReportUrl(jobName); err == nil {
+			reportUrl = url
+		}
 		c.JSON(http.StatusOK, gin.H{
-			"jobName": jobName,
-			"status":  k8sStatus,
-			"job":     job,
-			"pods":    pods,
-			"source":  "kubernetes",
+			"jobName":   jobName,
+			"status":    k8sStatus,
+			"job":       job,
+			"pods":      pods,
+			"source":    "kubernetes",
+			"reportUrl": reportUrl,
 		})
 	})
 
@@ -576,6 +586,24 @@ func main() {
 			_ = repo.UpdatePodStatus(string(pod.UID), string(pod.Status.Phase))
 		}
 
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	r.POST("/api/report/:jobName/link", func(c *gin.Context) {
+		jobName := c.Param("jobName")
+
+		var req struct {
+			ReportUrl string `json:"report_url"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.ReportUrl == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "report_url is required"})
+			return
+		}
+
+		if err := repo.SetJobReportUrl(jobName, req.ReportUrl); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 
