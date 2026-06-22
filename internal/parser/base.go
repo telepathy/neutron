@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"neutron/internal/model"
+	"strings"
 	"time"
 )
 
@@ -79,6 +80,53 @@ func ReadBody(body io.ReadCloser) ([]byte, error) {
 		return nil, fmt.Errorf("reading webhook body: %w", err)
 	}
 	return data, nil
+}
+
+// BuildSourceUrl constructs the URL to the source branch or MR on the code hosting platform.
+// It returns empty string for unsupported triggers (e.g., "API").
+func BuildSourceUrl(platform, trigger, codebaseUrl, repoUrl, ref, codeSha string, mrIid int) string {
+	switch platform {
+	case "GitLab":
+		projectPath := ExtractGitLabProjectPath(repoUrl)
+		if projectPath == "" {
+			return ""
+		}
+		refName := ExtractRefName(ref)
+		switch trigger {
+		case "MR":
+			return fmt.Sprintf("%s/%s/-/merge_requests/%d", codebaseUrl, projectPath, mrIid)
+		case "PUSH":
+			return fmt.Sprintf("%s/%s/-/tree/%s", codebaseUrl, projectPath, refName)
+		case "TAG":
+			return fmt.Sprintf("%s/%s/-/tags/%s", codebaseUrl, projectPath, refName)
+		}
+	case "Codeup":
+		orgId, codeupProject := ExtractCodeupOrgAndProject(repoUrl)
+		if orgId == "" || codeupProject == "" {
+			return ""
+		}
+		projectUrl := fmt.Sprintf("%s/codeup/%s/%s", codebaseUrl, orgId, codeupProject)
+		refName := ExtractRefName(ref)
+		switch trigger {
+		case "MR":
+			return fmt.Sprintf("%s/change/%d", projectUrl, mrIid)
+		case "PUSH":
+			return fmt.Sprintf("%s/commit/%s?branch=%s", projectUrl, codeSha, url.QueryEscape(refName))
+		case "TAG":
+			return fmt.Sprintf("%s/tree/%s", projectUrl, refName)
+		}
+	}
+	return ""
+}
+
+func ExtractRefName(ref string) string {
+	if after, ok := strings.CutPrefix(ref, "refs/heads/"); ok {
+		return after
+	}
+	if after, ok := strings.CutPrefix(ref, "refs/tags/"); ok {
+		return after
+	}
+	return ref
 }
 
 // DetectTrigger returns trigger type, ref SHA, report SHA, target branch from common webhook fields.

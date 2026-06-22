@@ -92,6 +92,7 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 			Namespace: l.Namespace,
 			Annotations: map[string]string{
 				"sourceLink":  fmt.Sprintf("%s/projects/%s", l.RunnerConfig.CodebaseUrl, l.RunnerConfig.ProjectId),
+				"sourceUrl":   l.RunnerConfig.SourceUrl,
 				"sourceType":  l.Platform,
 				"triggerType": l.RunnerConfig.Trigger,
 				"gitPath":     l.RunnerConfig.GitRepoUrl,

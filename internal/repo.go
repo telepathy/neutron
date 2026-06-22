@@ -86,6 +86,7 @@ type JobStatus struct {
 	WebhookType string `json:"webhook_type"`
 	RepoUrl     string `json:"repo_url"`
 	ProjectUrl  string `json:"project_url"`
+	SourceUrl   string `json:"source_url"`
 	TriggerType string `json:"trigger_type"`
 	Active      int    `json:"active"`
 	Succeeded   int    `json:"succeeded"`

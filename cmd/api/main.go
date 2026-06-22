@@ -402,6 +402,7 @@ func main() {
 			TriggerType: ann["triggerType"],
 			RepoUrl:     ann["gitPath"],
 			ProjectUrl:  ann["sourceLink"],
+			SourceUrl:   ann["sourceUrl"],
 		}
 		if job.Status.Active > 0 {
 			k8sStatus.Active = 1
@@ -462,6 +463,12 @@ func main() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+		// Preserve existing SourceUrl from DB if not provided in report (runners don't send it)
+		if status.SourceUrl == "" {
+			if oldStatus, err := repo.GetJobStatus(jobName); err == nil {
+				status.SourceUrl = oldStatus.SourceUrl
+			}
+		}
 		err := repo.UpdateJobStatus(jobName, status)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -494,6 +501,9 @@ func main() {
 				} else {
 					title = "✅ 流水线执行成功"
 					content = fmt.Sprintf("📂 项目: %s\n📋 任务: %s\n🔗 查看: %s", repoUrl, jobName, statusUrl)
+				}
+				if status.SourceUrl != "" {
+					content += fmt.Sprintf("\n📎 源码: %s", status.SourceUrl)
 				}
 				if notifyClient != nil {
 					if recipients, err := repo.ListNotifyRecipients(dbJob.ProjectId); err == nil {
@@ -623,6 +633,7 @@ func main() {
 		var pReportSha string
 		var pTargetBranch string
 		var pProjectId int
+		var pSourceUrl string
 		var err error
 		var jobs []string
 
@@ -643,6 +654,8 @@ func main() {
 			pReportSha = p.ReportSha
 			pTargetBranch = p.TargetBranch
 			pProjectId = p.Request.Project.Id
+			// Construct source URL (branch/MR link on GitLab)
+			pSourceUrl = parser.BuildSourceUrl("GitLab", pTrigger, config.BaseConfig["GitLab"].Url, webhookConfig.RepoUrl, p.Request.Ref, pCodeSha, p.Request.Attributes.Iid)
 		case "Codeup":
 			codeupCfg, ok := config.BaseConfig["Codeup"]
 			if !ok {
@@ -669,6 +682,8 @@ func main() {
 			if pProjectId == 0 {
 				pProjectId = p.Request.Attributes.ProjectId
 			}
+			// Construct source URL (branch/MR link on Codeup)
+			pSourceUrl = parser.BuildSourceUrl("Codeup", pTrigger, codeupCfg.Url, webhookConfig.RepoUrl, p.Request.Ref, pCodeSha, p.Request.Attributes.Iid)
 		default:
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported platform: %s", platform)})
 			return
@@ -696,6 +711,7 @@ func main() {
 				GitRepoUrl:    webhookConfig.RepoUrl,
 				GitPrivateKey: "/etc/ssh/id_rsa",
 				TargetBranch:  pTargetBranch,
+				SourceUrl:     pSourceUrl,
 			}
 
 			// platform-specific extra env vars
@@ -749,6 +765,9 @@ func main() {
 			statusUrl := fmt.Sprintf("%s/#/status/%s", config.Host, jobs[0])
 			title := "🚀 流水线触发通知"
 			content := fmt.Sprintf("📂 项目: %s\n🔄 触发: %s\n🔗 查看: %s", webhookConfig.RepoUrl, pTrigger, statusUrl)
+			if pSourceUrl != "" {
+				content += fmt.Sprintf("\n📎 源码: %s", pSourceUrl)
+			}
 			if notifyClient != nil {
 				if recipients, err := repo.ListNotifyRecipients(id); err == nil {
 					for _, r := range recipients {
