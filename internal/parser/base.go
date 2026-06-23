@@ -105,7 +105,8 @@ func BuildSourceUrl(platform, trigger, codebaseUrl, repoUrl, ref, codeSha string
 		if orgId == "" || codeupProject == "" {
 			return ""
 		}
-		projectUrl := fmt.Sprintf("%s/codeup/%s/%s", codebaseUrl, orgId, codeupProject)
+		// codeupProject already contains orgId as its first segment (e.g. "orgId/group/project")
+		projectUrl := fmt.Sprintf("%s/codeup/%s", codebaseUrl, codeupProject)
 		refName := ExtractRefName(ref)
 		switch trigger {
 		case "MR":

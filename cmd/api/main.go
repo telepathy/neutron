@@ -469,6 +469,14 @@ func main() {
 				status.SourceUrl = oldStatus.SourceUrl
 			}
 		}
+		// Fallback: load SourceUrl from K8s Job annotations if still empty
+		if status.SourceUrl == "" {
+			if k8sJob, err := clientSet.BatchV1().Jobs(config.Kubernetes.Namespace).Get(context.Background(), jobName, metav1.GetOptions{}); err == nil {
+				if srcUrl := k8sJob.Annotations["sourceUrl"]; srcUrl != "" {
+					status.SourceUrl = srcUrl
+				}
+			}
+		}
 		err := repo.UpdateJobStatus(jobName, status)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

@@ -1189,7 +1189,7 @@
                     '<table><thead><tr><th>Pod</th><th>Status</th></tr></thead><tbody>' + podsHtml + '</tbody></table>'
                     : '<p style="color:#999;margin-top:12px">No pods found.</p>') +
                 (appConfig.logUrl ? '<p class="log-hint">Click pod name to view logs on external platform</p>' : '') +
-                (reportUrl ? '<div style="margin-top:16px"><a target="_blank" href="' + escAttr(reportUrl) + '" class="btn btn-outline">查看测试报告</a></div>' : '') +
+                (reportUrl ? '<div style="margin-top:16px"><a target="_blank" href="' + escAttr(reportUrl) + '" class="btn btn-outline" style="padding:6px 16px;font-size:1.3rem">Test Report</a></div>' : '') +
             '</div>';
     }
 
