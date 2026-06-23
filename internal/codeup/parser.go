@@ -31,6 +31,7 @@ type Repository struct {
 
 type Attributes struct {
 	Iid          int        `json:"local_id"`
+	Action       string     `json:"action"`
 	ProjectId    int        `json:"project_id"`
 	TargetBranch string     `json:"target_branch"`
 	LastCommit   LastCommit `json:"last_commit"`
@@ -61,6 +62,14 @@ func NewCodeupParser(requestBody io.ReadCloser, codeupHost string, token string,
 	if err != nil {
 		return nil, err
 	}
+	// Skip MR events for merge/close actions (only trigger on open/reopen/update)
+	if trigger == "MR" {
+		action := request.Attributes.Action
+		if action == "merge" || action == "close" {
+			return nil, fmt.Errorf("skipping MR action: %s", action)
+		}
+	}
+
 	if ref == "" {
 		return nil, fmt.Errorf("missing commit SHA in webhook payload (type: %s)", request.WebhookType)
 	}
