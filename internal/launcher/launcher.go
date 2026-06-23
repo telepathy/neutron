@@ -45,7 +45,7 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 	ts := time.Now().Format("20060102-150405")
 	fullJobName := fmt.Sprintf("neutron-%s-%s", l.RunnerConfig.JobName, ts)
 	var checkoutCommand string
-	if l.RunnerConfig.Trigger == "MR" {
+	if l.RunnerConfig.Trigger == "MR" && l.RunnerConfig.TargetBranch != "" {
 		// clone target branch, fetch source commit, merge
 		checkoutCommand = fmt.Sprintf(
 			"git clone --branch %s %s /repo && cd /repo && git config user.email neutron@ci && git config user.name neutron && git fetch origin %s && git merge --no-edit %s && chmod -R 777 /repo",
@@ -65,6 +65,7 @@ func (l *Launcher) CreateJob(neutronHost string) *batchv1.Job {
 		{Name: "COMMIT_SHA", Value: l.RunnerConfig.CommitSha},
 		{Name: "REPORT_SHA", Value: l.RunnerConfig.ReportSha},
 		{Name: "TRIGGER", Value: l.RunnerConfig.Trigger},
+		{Name: "CODE_REF", Value: l.RunnerConfig.CodeRef},
 		{Name: "JOB_NAME", Value: l.RunnerConfig.JobName},
 		{Name: "FULL_JOB_NAME", Value: fullJobName},
 		{Name: "GIT_REPO_URL", Value: l.RunnerConfig.GitRepoUrl},

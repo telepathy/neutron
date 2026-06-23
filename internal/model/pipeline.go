@@ -38,6 +38,7 @@ type RunnerConfig struct {
 	GitPrivateKey      string
 	PipelineUrl        string
 	TargetBranch       string // MR target branch, GitLab only
+	CodeRef            string // tag name for TAG, branch name for PUSH, empty for MR
 	SourceUrl          string // URL to the source branch/MR on the code hosting platform
 	SkipTriggerCheck   bool   // skip trigger type validation (for API-triggered jobs)
 	SkipPlatformReport bool   // skip reporting commit status to platform (for API-triggered jobs)

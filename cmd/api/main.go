@@ -632,6 +632,7 @@ func main() {
 		var pCodeSha string
 		var pReportSha string
 		var pTargetBranch string
+		var pCodeRef string
 		var pProjectId int
 		var pSourceUrl string
 		var err error
@@ -653,6 +654,7 @@ func main() {
 			pCodeSha = p.CodeSha
 			pReportSha = p.ReportSha
 			pTargetBranch = p.TargetBranch
+			pCodeRef = codeRefForTrigger(pTrigger, p.Request.Ref)
 			pProjectId = p.Request.Project.Id
 			// Construct source URL (branch/MR link on GitLab)
 			pSourceUrl = parser.BuildSourceUrl("GitLab", pTrigger, config.BaseConfig["GitLab"].Url, webhookConfig.RepoUrl, p.Request.Ref, pCodeSha, p.Request.Attributes.Iid)
@@ -675,6 +677,8 @@ func main() {
 			pTrigger = p.Trigger
 			pCodeSha = p.CodeSha
 			pReportSha = p.ReportSha
+			pTargetBranch = p.TargetBranch
+			pCodeRef = codeRefForTrigger(pTrigger, p.Request.Ref)
 			pProjectId = p.Request.Project.Id
 			if pProjectId == 0 {
 				pProjectId = p.Request.ProjectId
@@ -711,6 +715,7 @@ func main() {
 				GitRepoUrl:    webhookConfig.RepoUrl,
 				GitPrivateKey: "/etc/ssh/id_rsa",
 				TargetBranch:  pTargetBranch,
+				CodeRef:       pCodeRef,
 				SourceUrl:     pSourceUrl,
 			}
 
@@ -850,6 +855,7 @@ func main() {
 			GitPrivateKey:      "/etc/ssh/id_rsa",
 			SkipTriggerCheck:   true,
 			SkipPlatformReport: true,
+			CodeRef:            codeRefForTrigger("API", req.Ref),
 		}
 
 		// Build extra env vars
@@ -950,4 +956,12 @@ func isValidTrigger(currentTrigger string, validTriggers []string) bool {
 		}
 	}
 	return false
+}
+
+// codeRefForTrigger returns the CODE_REF value: tag name for TAG, branch name for PUSH, empty for MR.
+func codeRefForTrigger(trigger, ref string) string {
+	if trigger == "MR" {
+		return ""
+	}
+	return parser.ExtractRefName(ref)
 }
