@@ -37,6 +37,7 @@ go test ./...
 - `GET /api/status/:jobName` — job/pod status (JSON, from DB for completed jobs or K8s API for active jobs)
 - `POST /api/report/:jobName` — runners push status back to API server for persistence
 - `POST /api/report/:jobName/link` — set a test report URL for a job (`{"report_url": "..."}`)
+- `POST /api/jobs/:jobName/rerun` — rerun a webhook-created job by recreating an identical K8s Job from its persisted spec (same commit/params/trigger, reports to platform like the original). Only jobs with a stored spec are rerunnable.
 - SPA: `cmd/api/static/index.html` — vanilla JS with hash-based routing (#/, #/projects, #/project/:id, #/status/:name)
 
 **GitLab Runner** (`cmd/gitlab-runner/`) — runs inside K8s pods for GitLab projects:
@@ -76,7 +77,7 @@ go test ./...
 
 Tables auto-migrated by GORM:
 - `neutron_project` (id, webhook_type, repo_url)
-- `neutron_job` (id, project_id, name, status, notify, completed, completed_at) — `notify` is JSON-encoded `model.Notify` captured from the job's `neutron.yaml` at trigger time
+- `neutron_job` (id, project_id, name, status, notify, spec, completed, completed_at) — `notify` is JSON-encoded `model.Notify`; `spec` is JSON-encoded `model.JobSpec` (rerun snapshot), captured from the job's `neutron.yaml`/webhook at trigger time
 - `neutron_pod` (id, job_id, pod_name, pod_uid, phase)
 - `neutron_job_report` (id, job_name, report_url, created_at) — test report link per job
 

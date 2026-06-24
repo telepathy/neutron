@@ -28,6 +28,7 @@ type PipelineJob struct {
 	Name        string        `gorm:"column:name;type:varchar(255);uniqueIndex"`
 	Status      string        `gorm:"column:status;type:text"`
 	Notify      string        `gorm:"column:notify;type:text"` // JSON-encoded model.Notify, captured at trigger time
+	Spec        string        `gorm:"column:spec;type:text"`   // JSON-encoded model.JobSpec for rerun; empty for API-triggered jobs
 	Completed   bool          `gorm:"column:completed;default:false"`
 	CompletedAt *time.Time    `gorm:"column:completed_at"`
 	Pods        []PipelinePod `gorm:"foreignKey:JobId"`
