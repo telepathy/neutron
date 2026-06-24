@@ -21,12 +21,12 @@ type Runner struct {
 func NewRunner(workingDir string, triggerType string, jobName string, reporter model.Reporter, skipTriggerCheck ...bool) *Runner {
 	data, err := os.ReadFile(path.Join(workingDir, "neutron.yaml"))
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err)
 	}
 	var pipeline model.Pipeline
 	err = yaml.Unmarshal(data, &pipeline)
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err)
 	}
 	if _, ok := pipeline.Jobs[jobName]; !ok {
 		log.Fatalf("pipeline job %s not found", jobName)

@@ -1116,35 +1116,6 @@
             });
     }
 
-    function renderStatusSolid(jobName, status, pods) {
-        var podsHtml = '';
-        for (var i = 0; i < pods.length; i++) {
-            if (appConfig.logUrl) {
-                podsHtml += '<tr><td><a href="javascript:void(0)" onclick="openPodLog(\'' + escAttr(pods[i].Name) + '\')">' + escHtml(pods[i].Name) + '</a></td><td>' + escHtml(pods[i].Status) + '</td></tr>';
-            } else {
-                podsHtml += '<tr><td>' + escHtml(pods[i].Name) + '</td><td>' + escHtml(pods[i].Status) + '</td></tr>';
-            }
-        }
-
-        app.innerHTML =
-            '<p class="page-title">Job &mdash; <b>' + escHtml(jobName) + '</b></p>' +
-            '<div class="card">' +
-                '<div class="meta">' +
-                    '<div>A <b>' + escHtml(status.WebhookType) + '</b> &rarr; <b>' + escHtml(status.TriggerType) + '</b> pipeline</div>' +
-                    (status.SourceUrl ? '<div><a target="_blank" href="' + escAttr(status.SourceUrl) + '" style="display:inline-block;background:#1a73e8;color:#fff;padding:2px 10px;border-radius:4px;font-size:1.2rem;text-decoration:none">show pipeline code</a></div>' : '') +
-                '</div>' +
-                '<div class="stat-row">' +
-                    '<div class="stat">Active: <b>' + (status.Active || 0) + '</b></div>' +
-                    '<div class="stat">Succeeded: <b>' + (status.Succeeded || 0) + '</b></div>' +
-                    '<div class="stat">Failed: <b>' + (status.Failed || 0) + '</b></div>' +
-                '</div>' +
-                (pods.length > 0 ?
-                    '<table><thead><tr><th>Pod</th><th>Status</th></tr></thead><tbody>' + podsHtml + '</tbody></table>'
-                    : '<p style="color:#999;margin-top:12px">No pods recorded.</p>') +
-                (appConfig.logUrl ? '<p class="log-hint">Click pod name to view logs on external platform</p>' : '') +
-            '</div>';
-    }
-
     function renderStatusLive(job, podsData, dbStatus, reportUrl) {
         var ann = job && job.metadata && job.metadata.annotations ? job.metadata.annotations : {};
         var st = job ? (job.status || {}) : {};
