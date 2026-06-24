@@ -455,6 +455,12 @@
                 '  build:                              # Job name\n' +
                 '    image: maven:3.9-eclipse-temurin-17  # Docker image\n' +
                 '    trigger: [PUSH, MR]                # Trigger events\n' +
+                '    notify:                            # Optional per-job notifications\n' +
+                '      users:                           # IM personal message recipients\n' +
+                '        - zhangsan\n' +
+                '        - lisi\n' +
+                '      groups:                          # CCWork group robot webhook URLs\n' +
+                '        - "https://ccwork.example.com/robot/send?key=order-dev"\n' +
                 '    resources:                         # Optional resource limits\n' +
                 '      limits:\n' +
                 '        cpu: "2"\n' +
@@ -483,6 +489,8 @@
                     '<tbody>' +
                         '<tr><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>image</code></td><td style="padding:8px;border-bottom:1px solid #f3f4f6">Docker image for the job</td><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>node:18</code></td></tr>' +
                         '<tr><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>trigger</code></td><td style="padding:8px;border-bottom:1px solid #f3f4f6">Events that trigger the job</td><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>[PUSH, MR, TAG]</code></td></tr>' +
+                        '<tr><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>notify.users</code></td><td style="padding:8px;border-bottom:1px solid #f3f4f6">IM 个人消息接收者 (user id)</td><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>[zhangsan, lisi]</code></td></tr>' +
+                        '<tr><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>notify.groups</code></td><td style="padding:8px;border-bottom:1px solid #f3f4f6">群机器人 webhook URL（群通知）</td><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>["https://.../robot/send?key=..."]</code></td></tr>' +
                         '<tr><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>resources.limits.cpu</code></td><td style="padding:8px;border-bottom:1px solid #f3f4f6">Maximum CPU cores</td><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>"2"</code>, <code>"500m"</code></td></tr>' +
                         '<tr><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>resources.limits.memory</code></td><td style="padding:8px;border-bottom:1px solid #f3f4f6">Maximum memory</td><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>"4Gi"</code>, <code>"512Mi"</code></td></tr>' +
                         '<tr><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>resources.requests.cpu</code></td><td style="padding:8px;border-bottom:1px solid #f3f4f6">Requested CPU cores</td><td style="padding:8px;border-bottom:1px solid #f3f4f6"><code>"500m"</code></td></tr>' +
@@ -656,9 +664,7 @@
 
         Promise.all([
             fetch('/api/projects').then(function(r) { return r.json(); }),
-            fetch('/api/projects/' + encodeURIComponent(projectId) + '/jobs').then(function(r) { return r.json(); }),
-            fetch('/api/projects/' + encodeURIComponent(projectId) + '/recipients').then(function(r) { return r.json(); }),
-            fetch('/api/projects/' + encodeURIComponent(projectId) + '/ccwebhooks').then(function(r) { return r.json(); })
+            fetch('/api/projects/' + encodeURIComponent(projectId) + '/jobs').then(function(r) { return r.json(); })
         ]).then(function(results) {
             var projects = results[0].projects || [];
             var project = null;
@@ -666,7 +672,7 @@
                 if (projects[i].Id === projectId) { project = projects[i]; break; }
             }
 
-            // Display project info + recipients tags + ccwebhook tags
+            // Display project info
             var infoEl = document.getElementById('projectInfo');
             if (project) {
                 var httpUrl = sshToHttp(project.RepoUrl, project.WebhookType);
@@ -674,34 +680,17 @@
                 var repoHtml = httpUrl
                     ? '<a target="_blank" href="' + escAttr(httpUrl) + '">' + escHtml(project.RepoUrl) + '</a>'
                     : escHtml(project.RepoUrl);
-                var recipients = results[2].recipients || [];
-                var tagsHtml = '';
-                for (var i = 0; i < recipients.length; i++) {
-                    tagsHtml += '<span class="tag">' + escHtml(recipients[i].user_id) + '</span>';
-                }
-                tagsHtml += '<span class="tag-add" onclick="openRecipientsModal(\'' + escAttr(projectId) + '\')">+ Edit</span>';
-                var webhooks = results[3].webhooks || [];
-                var webhookTagsHtml = '';
-                for (var i = 0; i < webhooks.length; i++) {
-                    webhookTagsHtml += '<span class="tag" title="' + escAttr(webhooks[i].webhook_url) + '">' + escHtml(webhooks[i].description || 'Webhook ' + webhooks[i].id) + '</span>';
-                }
-                webhookTagsHtml += '<span class="tag-add" onclick="openCCWebhooksModal(\'' + escAttr(projectId) + '\')">+ Edit</span>';
                 infoEl.innerHTML =
                     '<div class="card" style="margin-bottom:16px">' +
                         '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">' +
                             '<span style="font-size:1.6rem;font-weight:700;color:#2d3748">' + escHtml(repoName) + '</span>' +
                             '<span style="font-size:1.2rem;font-weight:600;color:#999;text-transform:uppercase;letter-spacing:.5px;margin-left:8px">' + escHtml(project.WebhookType) + '</span>' +
                         '</div>' +
-                        '<div style="margin-bottom:12px">' +
+                        '<div>' +
                             '<span style="font-size:1.3rem;color:#606c76">' + repoHtml + '</span>' +
                         '</div>' +
-                        '<div style="border-top:1px solid #f3f4f6;padding-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
-                            '<span style="font-size:1.2rem;font-weight:600;color:#999;text-transform:uppercase;letter-spacing:.5px">Notify</span>' +
-                            '<div id="projectRecipientTags" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">' + tagsHtml + '</div>' +
-                        '</div>' +
-                        '<div style="border-top:1px solid #f3f4f6;padding-top:12px;margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
-                            '<span style="font-size:1.2rem;font-weight:600;color:#999;text-transform:uppercase;letter-spacing:.5px">群通知</span>' +
-                            '<div id="projectCCWebhookTags" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">' + webhookTagsHtml + '</div>' +
+                        '<div style="border-top:1px solid #f3f4f6;padding-top:12px;margin-top:12px;font-size:1.3rem;color:#999">' +
+                            '通知策略已迁移至仓库内 <code>neutron.yaml</code> 的各 job <code>notify</code> 配置（见 <a href="#/help">帮助</a>）。' +
                         '</div>' +
                     '</div>';
             }
@@ -716,245 +705,6 @@
         }).catch(function(err) {
             document.getElementById('jobsList').innerHTML = '<p style="color:#c00">Failed to load: ' + escHtml(String(err)) + '</p>';
         });
-    }
-
-    // --- Recipients Modal ---
-    function openRecipientsModal(projectId) {
-        // Overlay
-        var overlay = document.createElement('div');
-        overlay.className = 'modal-overlay';
-        overlay.id = 'recipientsModal';
-        overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
-
-        var modal = document.createElement('div');
-        modal.className = 'modal';
-        modal.innerHTML =
-            '<h4>Notification Recipients</h4>' +
-            '<div id="modalRecipientsList"><p style="color:#999;font-size:1.3rem">Loading...</p></div>' +
-            '<div class="modal-input-row">' +
-                '<input type="text" id="modalRecipientInput" placeholder="Enter user ID...">' +
-                '<button class="btn btn-outline" id="modalAddBtn" style="margin:0;padding:8px 16px;font-size:1.3rem">Add</button>' +
-            '</div>';
-        overlay.appendChild(modal);
-        document.body.appendChild(overlay);
-
-        function refreshModalList() {
-            fetch('/api/projects/' + encodeURIComponent(projectId) + '/recipients')
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    var list = data.recipients || [];
-                    var el = document.getElementById('modalRecipientsList');
-                    if (!el) return;
-                    if (list.length === 0) {
-                        el.innerHTML = '<p style="color:#999;font-size:1.3rem">No recipients configured.</p>';
-                    } else {
-                        var html = '';
-                        for (var i = 0; i < list.length; i++) {
-                            html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f3f4f6">' +
-                                '<span style="font-size:1.4rem;color:#222">' + escHtml(list[i].user_id) + '</span>' +
-                                '<a href="javascript:void(0)" style="color:#dc2626;font-size:1.2rem;font-weight:600" ' +
-                                'onclick="removeRecipientFromModal(\'' + escAttr(projectId) + '\',' + list[i].id + ')">Remove</a></div>';
-                        }
-                        el.innerHTML = html;
-                    }
-                });
-        }
-        refreshModalList();
-
-        var btn = document.getElementById('modalAddBtn');
-        var input = document.getElementById('modalRecipientInput');
-        btn.onclick = function() {
-            var userId = input.value.trim();
-            if (!userId) return;
-            fetch('/api/projects/' + encodeURIComponent(projectId) + '/recipients', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: userId })
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.error) { alert(data.error); return; }
-                input.value = '';
-                refreshModalList();
-                refreshProjectTags(projectId);
-            })
-            .catch(function(err) { alert('Request failed: ' + err); });
-        };
-        input.onkeydown = function(e) { if (e.key === 'Enter') btn.onclick(); };
-        input.focus();
-    }
-    window.openRecipientsModal = openRecipientsModal;
-
-    // --- CCWebhooks Modal ---
-    function openCCWebhooksModal(projectId) {
-        var overlay = document.createElement('div');
-        overlay.className = 'modal-overlay';
-        overlay.id = 'ccwebhooksModal';
-        overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
-
-        var modal = document.createElement('div');
-        modal.className = 'modal';
-        modal.style.maxWidth = '520px';
-        modal.innerHTML =
-            '<h4>群通知 Webhook</h4>' +
-            '<div id="modalCCWebhooksList"><p style="color:#999;font-size:1.3rem">Loading...</p></div>' +
-            '<div style="margin-top:16px">' +
-                '<div class="modal-input-row">' +
-                    '<input type="text" id="modalWebhookUrl" placeholder="Webhook URL">' +
-                '</div>' +
-                '<div class="modal-input-row">' +
-                    '<input type="text" id="modalWebhookDesc" placeholder="描述 (如: 前端开发群)">' +
-                    '<button class="btn btn-outline" id="modalAddWebhookBtn" style="margin:0;padding:8px 16px;font-size:1.3rem">Add</button>' +
-                '</div>' +
-            '</div>';
-        overlay.appendChild(modal);
-        document.body.appendChild(overlay);
-
-        function refreshModalList() {
-            fetch('/api/projects/' + encodeURIComponent(projectId) + '/ccwebhooks')
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    var list = data.webhooks || [];
-                    var el = document.getElementById('modalCCWebhooksList');
-                    if (!el) return;
-                    if (list.length === 0) {
-                        el.innerHTML = '<p style="color:#999;font-size:1.3rem">No webhooks configured.</p>';
-                    } else {
-                        var html = '';
-                        for (var i = 0; i < list.length; i++) {
-                            html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f3f4f6">' +
-                                '<div style="flex:1;min-width:0">' +
-                                    '<div style="font-size:1.4rem;color:#222;font-weight:600">' + escHtml(list[i].description || 'Webhook ' + list[i].id) + '</div>' +
-                                    '<div style="font-size:1.2rem;color:#999;word-break:break-all">' + escHtml(list[i].webhook_url) + '</div>' +
-                                '</div>' +
-                                '<a href="javascript:void(0)" style="color:#dc2626;font-size:1.2rem;font-weight:600;margin-left:12px;flex-shrink:0" ' +
-                                'onclick="removeCCWebhookFromModal(\'' + escAttr(projectId) + '\',' + list[i].id + ')">Remove</a></div>';
-                        }
-                        el.innerHTML = html;
-                    }
-                });
-        }
-        refreshModalList();
-
-        var btn = document.getElementById('modalAddWebhookBtn');
-        var urlInput = document.getElementById('modalWebhookUrl');
-        var descInput = document.getElementById('modalWebhookDesc');
-        btn.onclick = function() {
-            var webhookUrl = urlInput.value.trim();
-            if (!webhookUrl) { alert('Please enter a webhook URL'); return; }
-            var description = descInput.value.trim();
-            fetch('/api/projects/' + encodeURIComponent(projectId) + '/ccwebhooks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ webhook_url: webhookUrl, description: description })
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.error) { alert(data.error); return; }
-                urlInput.value = '';
-                descInput.value = '';
-                refreshModalList();
-                refreshCCWebhookTags(projectId);
-            })
-            .catch(function(err) { alert('Request failed: ' + err); });
-        };
-        descInput.onkeydown = function(e) { if (e.key === 'Enter') btn.onclick(); };
-        urlInput.focus();
-    }
-    window.openCCWebhooksModal = openCCWebhooksModal;
-
-    function removeCCWebhookFromModal(projectId, wid) {
-        fetch('/api/projects/' + encodeURIComponent(projectId) + '/ccwebhooks/' + wid, { method: 'DELETE' })
-            .then(function(r) { return r.json(); })
-            .then(function() {
-                var el = document.getElementById('modalCCWebhooksList');
-                if (el) {
-                    fetch('/api/projects/' + encodeURIComponent(projectId) + '/ccwebhooks')
-                        .then(function(r) { return r.json(); })
-                        .then(function(data) {
-                            var list = data.webhooks || [];
-                            if (list.length === 0) {
-                                el.innerHTML = '<p style="color:#999;font-size:1.3rem">No webhooks configured.</p>';
-                            } else {
-                                var html = '';
-                                for (var i = 0; i < list.length; i++) {
-                                    html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f3f4f6">' +
-                                        '<div style="flex:1;min-width:0">' +
-                                            '<div style="font-size:1.4rem;color:#222;font-weight:600">' + escHtml(list[i].description || 'Webhook ' + list[i].id) + '</div>' +
-                                            '<div style="font-size:1.2rem;color:#999;word-break:break-all">' + escHtml(list[i].webhook_url) + '</div>' +
-                                        '</div>' +
-                                        '<a href="javascript:void(0)" style="color:#dc2626;font-size:1.2rem;font-weight:600;margin-left:12px;flex-shrink:0" ' +
-                                        'onclick="removeCCWebhookFromModal(\'' + escAttr(projectId) + '\',' + list[i].id + ')">Remove</a></div>';
-                                }
-                                el.innerHTML = html;
-                            }
-                        });
-                }
-                refreshCCWebhookTags(projectId);
-            });
-    }
-    window.removeCCWebhookFromModal = removeCCWebhookFromModal;
-
-    function refreshCCWebhookTags(projectId) {
-        fetch('/api/projects/' + encodeURIComponent(projectId) + '/ccwebhooks')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                var tagsEl = document.getElementById('projectCCWebhookTags');
-                if (!tagsEl) return;
-                var webhooks = data.webhooks || [];
-                var html = '';
-                for (var i = 0; i < webhooks.length; i++) {
-                    html += '<span class="tag" title="' + escAttr(webhooks[i].webhook_url) + '">' + escHtml(webhooks[i].description || 'Webhook ' + webhooks[i].id) + '</span>';
-                }
-                html += '<span class="tag-add" onclick="openCCWebhooksModal(\'' + escAttr(projectId) + '\')">+ Edit</span>';
-                tagsEl.innerHTML = html;
-            });
-    }
-
-    function removeRecipientFromModal(projectId, rid) {
-        fetch('/api/projects/' + encodeURIComponent(projectId) + '/recipients/' + rid, { method: 'DELETE' })
-            .then(function(r) { return r.json(); })
-            .then(function() {
-                // Refresh modal list
-                var el = document.getElementById('modalRecipientsList');
-                if (el) {
-                    fetch('/api/projects/' + encodeURIComponent(projectId) + '/recipients')
-                        .then(function(r) { return r.json(); })
-                        .then(function(data) {
-                            var list = data.recipients || [];
-                            if (list.length === 0) {
-                                el.innerHTML = '<p style="color:#999;font-size:1.3rem">No recipients configured.</p>';
-                            } else {
-                                var html = '';
-                                for (var i = 0; i < list.length; i++) {
-                                    html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f3f4f6">' +
-                                        '<span style="font-size:1.4rem;color:#222">' + escHtml(list[i].user_id) + '</span>' +
-                                        '<a href="javascript:void(0)" style="color:#dc2626;font-size:1.2rem;font-weight:600" ' +
-                                        'onclick="removeRecipientFromModal(\'' + escAttr(projectId) + '\',' + list[i].id + ')">Remove</a></div>';
-                                }
-                                el.innerHTML = html;
-                            }
-                        });
-                }
-                refreshProjectTags(projectId);
-            });
-    }
-    window.removeRecipientFromModal = removeRecipientFromModal;
-
-    function refreshProjectTags(projectId) {
-        fetch('/api/projects/' + encodeURIComponent(projectId) + '/recipients')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                var tagsEl = document.getElementById('projectRecipientTags');
-                if (!tagsEl) return;
-                var recipients = data.recipients || [];
-                var html = '';
-                for (var i = 0; i < recipients.length; i++) {
-                    html += '<span class="tag">' + escHtml(recipients[i].user_id) + '</span>';
-                }
-                html += '<span class="tag-add" onclick="openRecipientsModal(\'' + escAttr(projectId) + '\')">+ Edit</span>';
-                tagsEl.innerHTML = html;
-            });
     }
 
     function renderProjectJobsList(jobs) {

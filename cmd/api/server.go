@@ -53,12 +53,6 @@ func (s *Server) registerRoutes(r *gin.Engine) {
 	r.GET("/api/projects", s.handleListProjects)
 	r.GET("/api/projects/:id/jobs", s.handleListProjectJobs)
 	r.GET("/api/jobs/recent", s.handleRecentJobs)
-	r.GET("/api/projects/:id/recipients", s.handleListRecipients)
-	r.POST("/api/projects/:id/recipients", s.handleAddRecipient)
-	r.DELETE("/api/projects/:id/recipients/:rid", s.handleRemoveRecipient)
-	r.GET("/api/projects/:id/ccwebhooks", s.handleListCCWebhooks)
-	r.POST("/api/projects/:id/ccwebhooks", s.handleAddCCWebhook)
-	r.DELETE("/api/projects/:id/ccwebhooks/:wid", s.handleRemoveCCWebhook)
 	r.POST("/api/register", s.handleRegister)
 	r.GET("/api/status/:jobName", s.handleStatus)
 	r.POST("/api/report/:jobName", s.handleReport)
@@ -106,95 +100,6 @@ func (s *Server) handleRecentJobs(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"jobs": jobs})
-}
-
-func (s *Server) handleListRecipients(c *gin.Context) {
-	id := c.Param("id")
-	recipients, err := s.repo.ListNotifyRecipients(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"recipients": recipients})
-}
-
-func (s *Server) handleAddRecipient(c *gin.Context) {
-	id := c.Param("id")
-	var req struct {
-		UserId string `json:"user_id"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil || req.UserId == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
-		return
-	}
-	// Check duplicate
-	var existing internal.NotifyRecipient
-	if err := s.repo.DB().Where("project_id = ? AND user_id = ?", id, req.UserId).First(&existing).Error; err == nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "Recipient already exists"})
-		return
-	}
-	recipient := internal.NotifyRecipient{ProjectId: id, UserId: req.UserId}
-	if err := s.repo.AddNotifyRecipient(recipient); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"id": recipient.Id, "project_id": id, "user_id": req.UserId})
-}
-
-func (s *Server) handleRemoveRecipient(c *gin.Context) {
-	id := c.Param("id")
-	rid, err := strconv.ParseInt(c.Param("rid"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid recipient id"})
-		return
-	}
-	if err := s.repo.RemoveNotifyRecipient(id, rid); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
-}
-
-func (s *Server) handleListCCWebhooks(c *gin.Context) {
-	id := c.Param("id")
-	webhooks, err := s.repo.ListCCWebhooks(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"webhooks": webhooks})
-}
-
-func (s *Server) handleAddCCWebhook(c *gin.Context) {
-	id := c.Param("id")
-	var req struct {
-		WebhookUrl  string `json:"webhook_url"`
-		Description string `json:"description"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil || req.WebhookUrl == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "webhook_url is required"})
-		return
-	}
-	webhook := internal.CCWebhook{ProjectId: id, WebhookUrl: req.WebhookUrl, Description: req.Description}
-	if err := s.repo.AddCCWebhook(webhook); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"id": webhook.Id, "project_id": id, "webhook_url": req.WebhookUrl, "description": req.Description})
-}
-
-func (s *Server) handleRemoveCCWebhook(c *gin.Context) {
-	id := c.Param("id")
-	wid, err := strconv.ParseInt(c.Param("wid"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid webhook id"})
-		return
-	}
-	if err := s.repo.RemoveCCWebhook(id, wid); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 func (s *Server) handleRegister(c *gin.Context) {
@@ -387,7 +292,7 @@ func (s *Server) handleReport(c *gin.Context) {
 			if status.SourceUrl != "" {
 				content += fmt.Sprintf("\n📎 源码: %s", status.SourceUrl)
 			}
-			s.sendNotifications(dbJob.ProjectId, title, content)
+			s.sendJobNotifications(parseNotify(dbJob.Notify), title, content)
 		}
 		finalPhase := "Succeeded"
 		if status.Failed > 0 {
@@ -621,22 +526,21 @@ func (s *Server) handleWebhook(c *gin.Context) {
 			ProjectId: id,
 			Name:      createdJob.Name,
 			Status:    "",
+			Notify:    marshalNotify(job.Notify),
 		}); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 		jobs = append(jobs, createdJob.Name)
-	}
 
-	// Notify recipients: pipeline triggered
-	if len(jobs) > 0 {
-		statusUrl := fmt.Sprintf("%s/#/status/%s", s.config.Host, jobs[0])
+		// Notify this job's targets: pipeline triggered
+		statusUrl := fmt.Sprintf("%s/#/status/%s", s.config.Host, createdJob.Name)
 		title := "🚀 流水线触发通知"
-		content := fmt.Sprintf("📂 项目: %s\n🔄 触发: %s\n🔗 查看: %s", webhookConfig.RepoUrl, ph.trigger, statusUrl)
+		content := fmt.Sprintf("📂 项目: %s\n📋 任务: %s\n🔄 触发: %s\n🔗 查看: %s", webhookConfig.RepoUrl, createdJob.Name, ph.trigger, statusUrl)
 		if ph.sourceUrl != "" {
 			content += fmt.Sprintf("\n📎 源码: %s", ph.sourceUrl)
 		}
-		s.sendNotifications(id, title, content)
+		s.sendJobNotifications(job.Notify, title, content)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "pipeline": ph.pipeline, "jobs": jobs})
@@ -732,6 +636,7 @@ func (s *Server) handleTrigger(c *gin.Context) {
 		ProjectId: project.Id,
 		Name:      createdJob.Name,
 		Status:    "",
+		Notify:    marshalNotify(job.Notify),
 	}); err != nil {
 		log.Printf("failed to save job to database: %v", err)
 	}
@@ -740,7 +645,7 @@ func (s *Server) handleTrigger(c *gin.Context) {
 	statusUrl := fmt.Sprintf("%s/#/status/%s", s.config.Host, createdJob.Name)
 	title := "🚀 流水线触发通知 (API)"
 	content := fmt.Sprintf("📂 项目: %s\n📋 作业: %s\n🏷️ Ref: %s\n🔗 查看: %s", req.RepoUrl, req.JobName, req.Ref, statusUrl)
-	s.sendNotifications(project.Id, title, content)
+	s.sendJobNotifications(job.Notify, title, content)
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":   "ok",
@@ -782,4 +687,30 @@ func codeRefForTrigger(trigger, ref string) string {
 		return ""
 	}
 	return parser.ExtractRefName(ref)
+}
+
+// marshalNotify serializes a job's notify config to JSON for persistence on
+// neutron_job. A nil config yields an empty string.
+func marshalNotify(n *model.Notify) string {
+	if n == nil {
+		return ""
+	}
+	b, err := json.Marshal(n)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// parseNotify deserializes the notify config persisted on neutron_job. An empty
+// or invalid value yields nil (no notifications).
+func parseNotify(s string) *model.Notify {
+	if s == "" {
+		return nil
+	}
+	var n model.Notify
+	if err := json.Unmarshal([]byte(s), &n); err != nil {
+		return nil
+	}
+	return &n
 }

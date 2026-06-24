@@ -9,6 +9,14 @@ type Job struct {
 	Trigger   []string   `yaml:"trigger"`
 	Steps     []Step     `yaml:"steps"`
 	Resources *Resources `yaml:"resources,omitempty"`
+	Notify    *Notify    `yaml:"notify,omitempty"`
+}
+
+// Notify declares the per-job notification targets. Both fields are optional;
+// an empty or absent Notify block means the job sends no notifications.
+type Notify struct {
+	Users  []string `yaml:"users,omitempty" json:"users,omitempty"`   // IM personal message recipients (user ids)
+	Groups []string `yaml:"groups,omitempty" json:"groups,omitempty"` // CCWork group robot webhook URLs
 }
 
 type Step struct {
