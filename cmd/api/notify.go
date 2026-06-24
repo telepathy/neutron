@@ -2,24 +2,26 @@ package main
 
 import (
 	"neutron/internal/ccwork"
+	"neutron/internal/model"
 )
 
-// sendNotifications fans a title/content message out to both notification
-// channels configured for a project: per-user IM messages and CCWork group
-// webhooks. Each send runs in its own goroutine, matching the original
-// fire-and-forget semantics.
-func (s *Server) sendNotifications(projectId, title, content string) {
+// sendJobNotifications fans a title/content message out to a job's configured
+// notification targets: IM personal messages for each user, and CCWork group
+// robot webhooks for each group URL. Each send runs in its own goroutine,
+// preserving fire-and-forget semantics. A nil or empty Notify sends nothing.
+func (s *Server) sendJobNotifications(n *model.Notify, title, content string) {
+	if n == nil {
+		return
+	}
 	if s.notifyClient != nil {
-		if recipients, err := s.repo.ListNotifyRecipients(projectId); err == nil {
-			for _, r := range recipients {
-				go s.notifyClient.SendMessage(r.UserId, title, content)
-			}
+		for _, u := range n.Users {
+			go s.notifyClient.SendMessage(u, title, content)
 		}
 	}
-	if webhooks, err := s.repo.ListCCWebhooks(projectId); err == nil && len(webhooks) > 0 {
-		ccWebhooks := make([]ccwork.Webhook, len(webhooks))
-		for i, w := range webhooks {
-			ccWebhooks[i] = ccwork.Webhook{Url: w.WebhookUrl, Description: w.Description}
+	if len(n.Groups) > 0 {
+		ccWebhooks := make([]ccwork.Webhook, len(n.Groups))
+		for i, url := range n.Groups {
+			ccWebhooks[i] = ccwork.Webhook{Url: url}
 		}
 		go s.ccworkRobot.SendToAll(ccWebhooks, title, content)
 	}

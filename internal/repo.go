@@ -23,12 +23,13 @@ func (PipelineProject) TableName() string {
 }
 
 type PipelineJob struct {
-	Id          int64        `gorm:"column:id;primaryKey;autoIncrement"`
-	ProjectId   string       `gorm:"column:project_id"`
-	Name        string       `gorm:"column:name;type:varchar(255);uniqueIndex"`
-	Status      string       `gorm:"column:status;type:text"`
-	Completed   bool         `gorm:"column:completed;default:false"`
-	CompletedAt *time.Time   `gorm:"column:completed_at"`
+	Id          int64         `gorm:"column:id;primaryKey;autoIncrement"`
+	ProjectId   string        `gorm:"column:project_id"`
+	Name        string        `gorm:"column:name;type:varchar(255);uniqueIndex"`
+	Status      string        `gorm:"column:status;type:text"`
+	Notify      string        `gorm:"column:notify;type:text"` // JSON-encoded model.Notify, captured at trigger time
+	Completed   bool          `gorm:"column:completed;default:false"`
+	CompletedAt *time.Time    `gorm:"column:completed_at"`
 	Pods        []PipelinePod `gorm:"foreignKey:JobId"`
 }
 
@@ -46,29 +47,6 @@ type PipelinePod struct {
 
 func (PipelinePod) TableName() string {
 	return "neutron_pod"
-}
-
-type NotifyRecipient struct {
-	Id        int64      `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	ProjectId string     `gorm:"column:project_id;type:char(36);uniqueIndex:idx_project_user" json:"project_id"`
-	UserId    string     `gorm:"column:user_id;type:varchar(100);uniqueIndex:idx_project_user" json:"user_id"`
-	CreatedAt *time.Time `gorm:"column:created_at" json:"created_at"`
-}
-
-func (NotifyRecipient) TableName() string {
-	return "neutron_notify"
-}
-
-type CCWebhook struct {
-	Id          int64      `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	ProjectId   string     `gorm:"column:project_id;type:char(36);index" json:"project_id"`
-	WebhookUrl  string     `gorm:"column:webhook_url;type:varchar(500)" json:"webhook_url"`
-	Description string     `gorm:"column:description;type:varchar(200)" json:"description"`
-	CreatedAt   *time.Time `gorm:"column:created_at" json:"created_at"`
-}
-
-func (CCWebhook) TableName() string {
-	return "neutron_ccwebhook"
 }
 
 type JobReport struct {
@@ -107,7 +85,7 @@ func NewRepository(config model.Config) *Repository {
 	}
 
 	// Auto-migrate tables
-	if err := db.AutoMigrate(&PipelineProject{}, &PipelineJob{}, &PipelinePod{}, &NotifyRecipient{}, &CCWebhook{}, &JobReport{}); err != nil {
+	if err := db.AutoMigrate(&PipelineProject{}, &PipelineJob{}, &PipelinePod{}, &JobReport{}); err != nil {
 		log.Fatalf("failed to auto-migrate database: %v", err)
 	}
 
@@ -219,34 +197,6 @@ func (r *Repository) MarkJobCompleted(jobName string) error {
 			"completed":    true,
 			"completed_at": now,
 		}).Error
-}
-
-func (r *Repository) ListNotifyRecipients(projectId string) ([]NotifyRecipient, error) {
-	var recipients []NotifyRecipient
-	err := r.db.Where("project_id = ?", projectId).Order("id").Find(&recipients).Error
-	return recipients, err
-}
-
-func (r *Repository) AddNotifyRecipient(recipient NotifyRecipient) error {
-	return r.db.Create(&recipient).Error
-}
-
-func (r *Repository) RemoveNotifyRecipient(projectId string, id int64) error {
-	return r.db.Where("project_id = ? AND id = ?", projectId, id).Delete(&NotifyRecipient{}).Error
-}
-
-func (r *Repository) ListCCWebhooks(projectId string) ([]CCWebhook, error) {
-	var webhooks []CCWebhook
-	err := r.db.Where("project_id = ?", projectId).Order("id").Find(&webhooks).Error
-	return webhooks, err
-}
-
-func (r *Repository) AddCCWebhook(webhook CCWebhook) error {
-	return r.db.Create(&webhook).Error
-}
-
-func (r *Repository) RemoveCCWebhook(projectId string, id int64) error {
-	return r.db.Where("project_id = ? AND id = ?", projectId, id).Delete(&CCWebhook{}).Error
 }
 
 func (r *Repository) SetJobReportUrl(jobName string, reportUrl string) error {
