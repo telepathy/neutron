@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -58,6 +59,7 @@ func (s *Server) registerRoutes(r *gin.Engine) {
 	r.POST("/api/report/:jobName", s.handleReport)
 	r.POST("/api/report/:jobName/pod", s.handleReportPod)
 	r.POST("/api/report/:jobName/link", s.handleReportLink)
+	r.POST("/api/jobs/:jobName/rerun", s.handleRerun)
 	r.POST("/webhook/:id", s.handleWebhook)
 	r.POST("/api/trigger", s.handleTrigger)
 }
@@ -147,12 +149,13 @@ func (s *Server) handleStatus(c *gin.Context) {
 			reportUrl = url
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"jobName":   jobName,
-			"status":    status,
-			"job":       gin.H{"metadata": gin.H{"name": jobName}},
-			"pods":      gin.H{"items": podItems},
-			"source":    "database",
-			"reportUrl": reportUrl,
+			"jobName":    jobName,
+			"status":     status,
+			"job":        gin.H{"metadata": gin.H{"name": jobName}},
+			"pods":       gin.H{"items": podItems},
+			"source":     "database",
+			"reportUrl":  reportUrl,
+			"rerunnable": dbJob.Spec != "",
 		})
 		return
 	}
@@ -228,12 +231,13 @@ func (s *Server) handleStatus(c *gin.Context) {
 		reportUrl = url
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"jobName":   jobName,
-		"status":    k8sStatus,
-		"job":       job,
-		"pods":      pods,
-		"source":    "kubernetes",
-		"reportUrl": reportUrl,
+		"jobName":    jobName,
+		"status":     k8sStatus,
+		"job":        job,
+		"pods":       pods,
+		"source":     "kubernetes",
+		"reportUrl":  reportUrl,
+		"rerunnable": dbErr == nil && dbJob.Spec != "",
 	})
 }
 
@@ -391,6 +395,50 @@ func (s *Server) handleReportLink(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// handleRerun reruns a previously webhook-created job by recreating an
+// identical K8s Job from its persisted spec (same commit, params, and trigger,
+// so it reports to the platform like the original run). It produces a new job
+// record; the original is untouched.
+func (s *Server) handleRerun(c *gin.Context) {
+	jobName := c.Param("jobName")
+
+	dbJob, err := s.repo.GetJobByName(jobName)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
+		return
+	}
+	spec, ok := parseSpec(dbJob.Spec)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "job is not rerunnable (no spec; only webhook jobs can be rerun)"})
+		return
+	}
+	if _, ok := s.config.BaseConfig[spec.Platform]; !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s codebase not configured", spec.Platform)})
+		return
+	}
+
+	createdName, err := s.createJobFromSpec(dbJob.ProjectId, spec, parseNotify(dbJob.Notify))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to rerun job: %v", err)})
+		return
+	}
+
+	// Notify the job's targets: rerun triggered
+	statusUrl := fmt.Sprintf("%s/#/status/%s", s.config.Host, createdName)
+	title := "🔁 流水线重跑通知"
+	content := fmt.Sprintf("📂 项目: %s\n📋 任务: %s\n♻️ 重跑自: %s\n🔄 触发: %s\n🔗 查看: %s", spec.GitRepoUrl, createdName, jobName, spec.Trigger, statusUrl)
+	if spec.SourceUrl != "" {
+		content += fmt.Sprintf("\n📎 源码: %s", spec.SourceUrl)
+	}
+	s.sendJobNotifications(parseNotify(dbJob.Notify), title, content)
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":   "ok",
+		"job_name": createdName,
+		"job_url":  statusUrl,
+	})
+}
+
 // parsedHook holds the platform-agnostic result of parsing an incoming webhook.
 type parsedHook struct {
 	pipeline     model.Pipeline
@@ -480,63 +528,34 @@ func (s *Server) handleWebhook(c *gin.Context) {
 			continue
 		}
 
-		// resolve codebase config (pod override if available)
-		baseCfg := s.config.BaseConfig[platform]
-		if pod, ok := s.config.PodCodeBase[platform]; ok {
-			baseCfg = pod
+		// Build the rerun snapshot from this webhook's parsed inputs.
+		spec := model.JobSpec{
+			Platform:     platform,
+			JobName:      jobName,
+			Image:        job.Image,
+			Resources:    job.Resources,
+			ProjectId:    strconv.Itoa(ph.projectId),
+			CommitSha:    ph.codeSha,
+			ReportSha:    ph.reportSha,
+			Trigger:      ph.trigger,
+			GitRepoUrl:   webhookConfig.RepoUrl,
+			TargetBranch: ph.targetBranch,
+			CodeRef:      ph.codeRef,
+			SourceUrl:    ph.sourceUrl,
+			QueryParams:  firstQueryValues(c.Request.URL.Query()),
 		}
 
-		runnerConfig := model.RunnerConfig{
-			CodebaseToken: baseCfg.Token,
-			CodebaseUrl:   baseCfg.Url,
-			ProjectId:     strconv.Itoa(ph.projectId),
-			CommitSha:     ph.codeSha,
-			ReportSha:     ph.reportSha,
-			JobName:       jobName,
-			Trigger:       ph.trigger,
-			GitRepoUrl:    webhookConfig.RepoUrl,
-			GitPrivateKey: "/etc/ssh/id_rsa",
-			TargetBranch:  ph.targetBranch,
-			CodeRef:       ph.codeRef,
-			SourceUrl:     ph.sourceUrl,
-		}
-
-		// platform-specific extra env vars
-		var extraEnv []v1.EnvVar
-		extraEnv = append(extraEnv, v1.EnvVar{Name: "RUNNER_PLATFORM", Value: strings.ToLower(platform)})
-		if baseCfg.SkipTLSVerify {
-			extraEnv = append(extraEnv, v1.EnvVar{Name: "SKIP_TLS_VERIFY", Value: "true"})
-		}
-		if platform == "GitLab" && ph.targetBranch != "" {
-			extraEnv = append(extraEnv, v1.EnvVar{Name: "TARGET_BRANCH", Value: ph.targetBranch})
-		}
-		// pass webhook URL query params as env vars to the pod
-		for key, values := range c.Request.URL.Query() {
-			extraEnv = append(extraEnv, v1.EnvVar{Name: key, Value: values[0]})
-		}
-
-		l := s.buildLauncher(runnerConfig, job.Image, job.Resources, platform, extraEnv)
-		jobClient := s.clientSet.BatchV1().Jobs(s.config.Kubernetes.Namespace)
-		createdJob, err := jobClient.Create(context.Background(), l.CreateJob(s.config.Host), metav1.CreateOptions{})
+		createdName, err := s.createJobFromSpec(id, spec, job.Notify)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		if err := s.repo.AddJob(internal.PipelineJob{
-			ProjectId: id,
-			Name:      createdJob.Name,
-			Status:    "",
-			Notify:    marshalNotify(job.Notify),
-		}); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		jobs = append(jobs, createdJob.Name)
+		jobs = append(jobs, createdName)
 
 		// Notify this job's targets: pipeline triggered
-		statusUrl := fmt.Sprintf("%s/#/status/%s", s.config.Host, createdJob.Name)
+		statusUrl := fmt.Sprintf("%s/#/status/%s", s.config.Host, createdName)
 		title := "🚀 流水线触发通知"
-		content := fmt.Sprintf("📂 项目: %s\n📋 任务: %s\n🔄 触发: %s\n🔗 查看: %s", webhookConfig.RepoUrl, createdJob.Name, ph.trigger, statusUrl)
+		content := fmt.Sprintf("📂 项目: %s\n📋 任务: %s\n🔄 触发: %s\n🔗 查看: %s", webhookConfig.RepoUrl, createdName, ph.trigger, statusUrl)
 		if ph.sourceUrl != "" {
 			content += fmt.Sprintf("\n📎 源码: %s", ph.sourceUrl)
 		}
@@ -544,6 +563,62 @@ func (s *Server) handleWebhook(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "pipeline": ph.pipeline, "jobs": jobs})
+}
+
+// createJobFromSpec rebuilds the RunnerConfig + extra env from a JobSpec,
+// creates the K8s Job, and persists the DB row carrying the same spec (so the
+// job can be rerun again). Returns the generated K8s Job name. Tokens/URLs are
+// resolved from the current config rather than the spec.
+func (s *Server) createJobFromSpec(projectId string, spec model.JobSpec, notify *model.Notify) (string, error) {
+	platform := spec.Platform
+	baseCfg := s.config.BaseConfig[platform]
+	if pod, ok := s.config.PodCodeBase[platform]; ok {
+		baseCfg = pod
+	}
+
+	runnerConfig := model.RunnerConfig{
+		CodebaseToken: baseCfg.Token,
+		CodebaseUrl:   baseCfg.Url,
+		ProjectId:     spec.ProjectId,
+		CommitSha:     spec.CommitSha,
+		ReportSha:     spec.ReportSha,
+		JobName:       spec.JobName,
+		Trigger:       spec.Trigger,
+		GitRepoUrl:    spec.GitRepoUrl,
+		GitPrivateKey: "/etc/ssh/id_rsa",
+		TargetBranch:  spec.TargetBranch,
+		CodeRef:       spec.CodeRef,
+		SourceUrl:     spec.SourceUrl,
+	}
+
+	var extraEnv []v1.EnvVar
+	extraEnv = append(extraEnv, v1.EnvVar{Name: "RUNNER_PLATFORM", Value: strings.ToLower(platform)})
+	if baseCfg.SkipTLSVerify {
+		extraEnv = append(extraEnv, v1.EnvVar{Name: "SKIP_TLS_VERIFY", Value: "true"})
+	}
+	if platform == "GitLab" && spec.TargetBranch != "" {
+		extraEnv = append(extraEnv, v1.EnvVar{Name: "TARGET_BRANCH", Value: spec.TargetBranch})
+	}
+	for key, value := range spec.QueryParams {
+		extraEnv = append(extraEnv, v1.EnvVar{Name: key, Value: value})
+	}
+
+	l := s.buildLauncher(runnerConfig, spec.Image, spec.Resources, platform, extraEnv)
+	jobClient := s.clientSet.BatchV1().Jobs(s.config.Kubernetes.Namespace)
+	createdJob, err := jobClient.Create(context.Background(), l.CreateJob(s.config.Host), metav1.CreateOptions{})
+	if err != nil {
+		return "", err
+	}
+	if err := s.repo.AddJob(internal.PipelineJob{
+		ProjectId: projectId,
+		Name:      createdJob.Name,
+		Status:    "",
+		Notify:    marshalNotify(notify),
+		Spec:      marshalSpec(spec),
+	}); err != nil {
+		return "", err
+	}
+	return createdJob.Name, nil
 }
 
 func (s *Server) handleTrigger(c *gin.Context) {
@@ -713,4 +788,42 @@ func parseNotify(s string) *model.Notify {
 		return nil
 	}
 	return &n
+}
+
+// marshalSpec serializes a job's rerun spec to JSON for persistence on
+// neutron_job. A marshal error yields an empty string (job becomes non-rerunnable).
+func marshalSpec(spec model.JobSpec) string {
+	b, err := json.Marshal(spec)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// parseSpec deserializes the rerun spec persisted on neutron_job. An empty or
+// invalid value yields ok=false.
+func parseSpec(s string) (model.JobSpec, bool) {
+	var spec model.JobSpec
+	if s == "" {
+		return spec, false
+	}
+	if err := json.Unmarshal([]byte(s), &spec); err != nil {
+		return spec, false
+	}
+	return spec, true
+}
+
+// firstQueryValues flattens url.Values to a single value per key, matching the
+// webhook handler's original behaviour of taking values[0].
+func firstQueryValues(q url.Values) map[string]string {
+	if len(q) == 0 {
+		return nil
+	}
+	m := make(map[string]string, len(q))
+	for key, values := range q {
+		if len(values) > 0 {
+			m[key] = values[0]
+		}
+	}
+	return m
 }

@@ -19,6 +19,27 @@ type Notify struct {
 	Groups []string `yaml:"groups,omitempty" json:"groups,omitempty"` // CCWork group robot webhook URLs
 }
 
+// JobSpec is the persisted snapshot of a webhook-created job's inputs, kept on
+// the DB row so an identical K8s Job can be recreated later (rerun). Tokens are
+// intentionally NOT stored — they are re-resolved from config at rerun time.
+// Steps are not stored either — the runner reads neutron.yaml from the same
+// immutable commit, so the same file is reproduced exactly.
+type JobSpec struct {
+	Platform     string            `json:"platform"`               // GitLab / Codeup
+	JobName      string            `json:"job_name"`               // pipeline job key (e.g. "build")
+	Image        string            `json:"image"`
+	Resources    *Resources        `json:"resources,omitempty"`
+	ProjectId    string            `json:"project_id"`             // RunnerConfig.ProjectId (numeric string)
+	CommitSha    string            `json:"commit_sha"`
+	ReportSha    string            `json:"report_sha"`
+	Trigger      string            `json:"trigger"`                // PUSH / MR / TAG
+	GitRepoUrl   string            `json:"git_repo_url"`
+	TargetBranch string            `json:"target_branch,omitempty"`
+	CodeRef      string            `json:"code_ref,omitempty"`
+	SourceUrl    string            `json:"source_url,omitempty"`
+	QueryParams  map[string]string `json:"query_params,omitempty"` // webhook URL query params → pod env
+}
+
 type Step struct {
 	StepName string `yaml:"name"`
 	Command  string `yaml:"cmd"`
