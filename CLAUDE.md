@@ -37,8 +37,6 @@ go test ./...
 - `GET /api/status/:jobName` — job/pod status (JSON, from DB for completed jobs or K8s API for active jobs)
 - `POST /api/report/:jobName` — runners push status back to API server for persistence
 - `POST /api/report/:jobName/link` — set a test report URL for a job (`{"report_url": "..."}`)
-- `GET/POST/DELETE /api/projects/:id/recipients` — manage IM notification recipients (per-user)
-- `GET/POST/DELETE /api/projects/:id/ccwebhooks` — manage CCWork group webhook URLs (per-project)
 - SPA: `cmd/api/static/index.html` — vanilla JS with hash-based routing (#/, #/projects, #/project/:id, #/status/:name)
 
 **GitLab Runner** (`cmd/gitlab-runner/`) — runs inside K8s pods for GitLab projects:
@@ -78,10 +76,8 @@ go test ./...
 
 Tables auto-migrated by GORM:
 - `neutron_project` (id, webhook_type, repo_url)
-- `neutron_job` (id, project_id, name, status, completed, completed_at)
+- `neutron_job` (id, project_id, name, status, notify, completed, completed_at) — `notify` is JSON-encoded `model.Notify` captured from the job's `neutron.yaml` at trigger time
 - `neutron_pod` (id, job_id, pod_name, pod_uid, phase)
-- `neutron_notify` (id, project_id, user_id) — IM notification recipients per project
-- `neutron_ccwebhook` (id, project_id, webhook_url, description) — CCWork group webhooks per project
 - `neutron_job_report` (id, job_name, report_url, created_at) — test report link per job
 
 ### Configuration
@@ -90,11 +86,24 @@ Runtime config is `config.yaml` (gitignored). Shape defined by `internal/model/c
 
 ### Notifications
 
-Two notification channels, always sent in parallel on pipeline trigger and completion:
-1. **IM notifications** (`internal/notify/`) — sends to individual users via enterprise IM bot API. Recipients managed per project in `neutron_notify` table.
-2. **CCWork group webhooks** (`internal/ccwork/`) — sends to group chats via webhook URLs. Webhooks managed per project in `neutron_ccwebhook` table, each with a description label.
+Notifications are configured **per job** in the repository's `neutron.yaml`, under each job's optional `notify` block:
 
-Both use structured attachment format with title (head) and body content.
+```yaml
+jobs:
+  build:
+    trigger: [PUSH, MR]
+    notify:
+      users:  [zhangsan, lisi]                          # IM personal-message recipients (user ids)
+      groups: ["https://ccwork.example.com/robot/send?key=..."]  # CCWork group robot webhook URLs
+```
+
+Two channels, sent in parallel (fire-and-forget) on pipeline trigger and completion for each job that declares targets:
+1. **IM notifications** (`internal/notify/`) — sends to individual users via enterprise IM bot API (`notify.users`).
+2. **CCWork group webhooks** (`internal/ccwork/`) — sends to group chats via webhook URLs (`notify.groups`).
+
+Both use structured attachment format with title (head) and body content. A job with no `notify` block sends nothing.
+
+The config is parsed at trigger time and persisted as JSON on `neutron_job.notify`, so the completion handler (`POST /api/report/:jobName`, which only knows the job name) can read the same targets back via the `GetJobByName` lookup it already performs — see `sendJobNotifications` / `marshalNotify` / `parseNotify` in `cmd/api/`.
 
 ### Webhook URL Parameters
 
