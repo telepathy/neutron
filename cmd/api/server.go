@@ -417,9 +417,10 @@ func (s *Server) handleRerun(c *gin.Context) {
 		return
 	}
 
-	createdName, err := s.createJobFromSpec(dbJob.ProjectId, spec, parseNotify(dbJob.Notify))
+	notify := parseNotify(dbJob.Notify)
+	createdName, err := s.createJobFromSpec(dbJob.ProjectId, spec, notify)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to rerun job: %v", err)})
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to rerun job: %v", err)})
 		return
 	}
 
@@ -430,7 +431,7 @@ func (s *Server) handleRerun(c *gin.Context) {
 	if spec.SourceUrl != "" {
 		content += fmt.Sprintf("\n📎 源码: %s", spec.SourceUrl)
 	}
-	s.sendJobNotifications(parseNotify(dbJob.Notify), title, content)
+	s.sendJobNotifications(notify, title, content)
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":   "ok",
@@ -565,11 +566,11 @@ func (s *Server) handleWebhook(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "pipeline": ph.pipeline, "jobs": jobs})
 }
 
-// createJobFromSpec rebuilds the RunnerConfig + extra env from a JobSpec,
-// creates the K8s Job, and persists the DB row carrying the same spec (so the
-// job can be rerun again). Returns the generated K8s Job name. Tokens/URLs are
-// resolved from the current config rather than the spec.
-func (s *Server) createJobFromSpec(projectId string, spec model.JobSpec, notify *model.Notify) (string, error) {
+// launcherFromSpec rebuilds the RunnerConfig + extra env from a JobSpec and
+// returns a configured launcher. Tokens/URLs are resolved from the current
+// config (not the spec). This is the pure manifest-construction step shared by
+// the webhook and rerun paths; it has no side effects, so it is unit-testable.
+func (s *Server) launcherFromSpec(spec model.JobSpec) *launcher.Launcher {
 	platform := spec.Platform
 	baseCfg := s.config.BaseConfig[platform]
 	if pod, ok := s.config.PodCodeBase[platform]; ok {
@@ -603,7 +604,14 @@ func (s *Server) createJobFromSpec(projectId string, spec model.JobSpec, notify 
 		extraEnv = append(extraEnv, v1.EnvVar{Name: key, Value: value})
 	}
 
-	l := s.buildLauncher(runnerConfig, spec.Image, spec.Resources, platform, extraEnv)
+	return s.buildLauncher(runnerConfig, spec.Image, spec.Resources, platform, extraEnv)
+}
+
+// createJobFromSpec builds the K8s Job from a JobSpec (via launcherFromSpec),
+// creates it, and persists the DB row carrying the same spec (so the job can be
+// rerun again). Returns the generated K8s Job name.
+func (s *Server) createJobFromSpec(projectId string, spec model.JobSpec, notify *model.Notify) (string, error) {
+	l := s.launcherFromSpec(spec)
 	jobClient := s.clientSet.BatchV1().Jobs(s.config.Kubernetes.Namespace)
 	createdJob, err := jobClient.Create(context.Background(), l.CreateJob(s.config.Host), metav1.CreateOptions{})
 	if err != nil {
