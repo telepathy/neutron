@@ -144,7 +144,7 @@ func TestBuildSourceUrl_Codeup(t *testing.T) {
 			ref:     "refs/merge-requests/15/head",
 			codeSha: "abc123def456",
 			mrIid:   15,
-			want:    "https://codeup.devops.csdc.com/codeup/org123/org123/SZ/PublicService/my-service/change/15",
+			want:    "https://codeup.devops.csdc.com/codeup/org123/SZ/PublicService/my-service/change/15",
 		},
 		{
 			name:    "Codeup PUSH main",
@@ -153,7 +153,7 @@ func TestBuildSourceUrl_Codeup(t *testing.T) {
 			ref:     "refs/heads/main",
 			codeSha: "abc123",
 			mrIid:   0,
-			want:    "https://codeup.devops.csdc.com/codeup/org123/org123/SZ/PublicService/my-service/commit/abc123?branch=main",
+			want:    "https://codeup.devops.csdc.com/codeup/org123/SZ/PublicService/my-service/commit/abc123?branch=main",
 		},
 		{
 			name:    "Codeup PUSH feature branch with special chars",
@@ -162,7 +162,7 @@ func TestBuildSourceUrl_Codeup(t *testing.T) {
 			ref:     "refs/heads/feature/test & build",
 			codeSha: "abc123",
 			mrIid:   0,
-			want:    "https://codeup.devops.csdc.com/codeup/org123/org123/SZ/PublicService/my-service/commit/abc123?branch=feature%2Ftest+%26+build",
+			want:    "https://codeup.devops.csdc.com/codeup/org123/SZ/PublicService/my-service/commit/abc123?branch=feature%2Ftest+%26+build",
 		},
 		{
 			name:    "Codeup TAG",
@@ -171,7 +171,7 @@ func TestBuildSourceUrl_Codeup(t *testing.T) {
 			ref:     "refs/tags/v1.0.0",
 			codeSha: "abc123",
 			mrIid:   0,
-			want:    "https://codeup.devops.csdc.com/codeup/org123/org123/SZ/PublicService/my-service/tree/v1.0.0",
+			want:    "https://codeup.devops.csdc.com/codeup/org123/SZ/PublicService/my-service/tree/v1.0.0",
 		},
 		{
 			name:    "Codeup TAG release",
@@ -180,7 +180,7 @@ func TestBuildSourceUrl_Codeup(t *testing.T) {
 			ref:     "refs/tags/release-2024.06.15",
 			codeSha: "abc123",
 			mrIid:   0,
-			want:    "https://codeup.devops.csdc.com/codeup/org123/org123/SZ/PublicService/my-service/tree/release-2024.06.15",
+			want:    "https://codeup.devops.csdc.com/codeup/org123/SZ/PublicService/my-service/tree/release-2024.06.15",
 		},
 		{
 			name:    "Codeup unsupported trigger",

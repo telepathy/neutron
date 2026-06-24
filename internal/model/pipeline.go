@@ -36,7 +36,6 @@ type RunnerConfig struct {
 	JobName            string
 	GitRepoUrl         string
 	GitPrivateKey      string
-	PipelineUrl        string
 	TargetBranch       string // MR target branch, GitLab only
 	CodeRef            string // tag name for TAG, branch name for PUSH, empty for MR
 	SourceUrl          string // URL to the source branch/MR on the code hosting platform

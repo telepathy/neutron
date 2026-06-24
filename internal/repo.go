@@ -212,12 +212,6 @@ func (r *Repository) UpdatePodStatus(podUid string, phase string) error {
 	return r.db.Model(&PipelinePod{}).Where("pod_uid = ?", podUid).Update("phase", phase).Error
 }
 
-func (r *Repository) GetJobPods(jobId int) ([]PipelinePod, error) {
-	var pods []PipelinePod
-	err := r.db.Where("job_id = ?", jobId).Find(&pods).Error
-	return pods, err
-}
-
 func (r *Repository) MarkJobCompleted(jobName string) error {
 	now := time.Now()
 	return r.db.Model(&PipelineJob{}).Where("name = ?", jobName).
