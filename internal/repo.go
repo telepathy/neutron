@@ -61,6 +61,21 @@ func (JobReport) TableName() string {
 	return "neutron_job_report"
 }
 
+type Snippet struct {
+	Id          int64      `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	Name        string     `gorm:"column:name;type:varchar(255);uniqueIndex" json:"name"`
+	Title       string     `gorm:"column:title;type:varchar(255)" json:"title"`
+	Content     string     `gorm:"column:content;type:text" json:"content"`
+	Description string     `gorm:"column:description;type:text" json:"description"`
+	ProjectId   *int64     `gorm:"column:project_id" json:"project_id"`
+	CreatedAt   *time.Time `gorm:"column:created_at" json:"created_at"`
+	UpdatedAt   *time.Time `gorm:"column:updated_at" json:"updated_at"`
+}
+
+func (Snippet) TableName() string {
+	return "neutron_snippet"
+}
+
 type JobStatus struct {
 	WebhookType string `json:"webhook_type"`
 	RepoUrl     string `json:"repo_url"`
@@ -86,7 +101,7 @@ func NewRepository(config model.Config) *Repository {
 	}
 
 	// Auto-migrate tables
-	if err := db.AutoMigrate(&PipelineProject{}, &PipelineJob{}, &PipelinePod{}, &JobReport{}); err != nil {
+	if err := db.AutoMigrate(&PipelineProject{}, &PipelineJob{}, &PipelinePod{}, &JobReport{}, &Snippet{}); err != nil {
 		log.Fatalf("failed to auto-migrate database: %v", err)
 	}
 
@@ -224,4 +239,38 @@ func (r *Repository) GetJobReportUrl(jobName string) (string, error) {
 		return "", result.Error
 	}
 	return report.ReportUrl, nil
+}
+
+// --- Snippet CRUD ---
+
+func (r *Repository) ListSnippets(projectId *int64) ([]Snippet, error) {
+	var snippets []Snippet
+	query := r.db.Order("name")
+	if projectId != nil {
+		query = query.Where("project_id = ?", *projectId)
+	}
+	err := query.Find(&snippets).Error
+	return snippets, err
+}
+
+func (r *Repository) GetSnippetByName(name string) (*Snippet, error) {
+	var snippet Snippet
+	result := r.db.Where("name = ?", name).First(&snippet)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return &snippet, nil
+}
+
+func (r *Repository) CreateSnippet(snippet Snippet) error {
+	return r.db.Create(&snippet).Error
+}
+
+func (r *Repository) UpdateSnippet(name string, updates map[string]interface{}) error {
+	updates["updated_at"] = time.Now()
+	return r.db.Model(&Snippet{}).Where("name = ?", name).Updates(updates).Error
+}
+
+func (r *Repository) DeleteSnippet(name string) error {
+	return r.db.Where("name = ?", name).Delete(&Snippet{}).Error
 }
