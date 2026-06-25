@@ -156,6 +156,7 @@ func (s *Server) handleStatus(c *gin.Context) {
 			"source":     "database",
 			"reportUrl":  reportUrl,
 			"rerunnable": dbJob.Spec != "",
+			"projectId":  dbJob.ProjectId,
 		})
 		return
 	}
@@ -230,6 +231,10 @@ func (s *Server) handleStatus(c *gin.Context) {
 	if url, err := s.repo.GetJobReportUrl(jobName); err == nil {
 		reportUrl = url
 	}
+	var projectId string
+	if dbErr == nil {
+		projectId = dbJob.ProjectId
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"jobName":    jobName,
 		"status":     k8sStatus,
@@ -238,6 +243,7 @@ func (s *Server) handleStatus(c *gin.Context) {
 		"source":     "kubernetes",
 		"reportUrl":  reportUrl,
 		"rerunnable": dbErr == nil && dbJob.Spec != "",
+		"projectId":  projectId,
 	})
 }
 

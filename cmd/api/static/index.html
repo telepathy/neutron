@@ -1029,14 +1029,14 @@
                     return;
                 }
                 // Always use renderStatusLive since we now always have job and pods
-                renderStatusLive(data.job, data.pods, data.status, data.reportUrl, data.rerunnable);
+                renderStatusLive(data.job, data.pods, data.status, data.reportUrl, data.rerunnable, data.projectId);
             })
             .catch(function(err) {
                 app.innerHTML = '<p class="page-title">Error</p><p>' + escHtml(String(err)) + '</p>';
             });
     }
 
-    function renderStatusLive(job, podsData, dbStatus, reportUrl, rerunnable) {
+    function renderStatusLive(job, podsData, dbStatus, reportUrl, rerunnable, projectId) {
         var ann = job && job.metadata && job.metadata.annotations ? job.metadata.annotations : {};
         var st = job ? (job.status || {}) : {};
         var items = podsData && podsData.items ? podsData.items : [];
@@ -1070,7 +1070,10 @@
             '<div class="card">' +
                 '<div class="meta">' +
                     '<div>A <b>' + escHtml(webhookType) + '</b> &rarr; <b>' + escHtml(triggerType) + '</b> pipeline</div>' +
-                    (sourceUrl ? '<div><a target="_blank" href="' + escAttr(sourceUrl) + '" style="display:inline-block;background:#1a73e8;color:#fff;padding:2px 10px;border-radius:4px;font-size:1.2rem;text-decoration:none">show pipeline code</a></div>' : '') +
+                    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+                        (sourceUrl ? '<a target="_blank" href="' + escAttr(sourceUrl) + '" style="display:inline-block;background:#1a73e8;color:#fff;padding:2px 10px;border-radius:4px;font-size:1.2rem;text-decoration:none">show pipeline code</a>' : '') +
+                        (projectId ? '<a href="#/project/' + escAttr(projectId) + '" class="btn btn-outline" style="padding:2px 10px;font-size:1.2rem">back to project</a>' : '') +
+                    '</div>' +
                 '</div>' +
                 '<div class="stat-row">' +
                     '<div class="stat">Active: <b>' + active + '</b></div>' +
