@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
+	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -24,6 +27,11 @@ import (
 
 //go:embed static/*
 var staticFs embed.FS
+
+var (
+	snippetNameRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+	safeParamKey     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+)
 
 func main() {
 	config, err := loadConfig()
@@ -74,6 +82,146 @@ func main() {
 
 	server := NewServer(config, repo, clientSet, notifyClient, ccworkRobot)
 	server.registerRoutes(r)
+
+	// --- Snippet management ---
+
+	r.GET("/api/snippets", func(c *gin.Context) {
+		snippets, err := repo.ListSnippets()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"snippets": snippets})
+	})
+
+	r.POST("/api/snippets", func(c *gin.Context) {
+		var req struct {
+			Name        string `json:"name"`
+			Title       string `json:"title"`
+			Content     string `json:"content"`
+			Description string `json:"description"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if req.Name == "" || req.Title == "" || req.Content == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "name, title, and content are required"})
+			return
+		}
+		// Validate name format: must be a safe URL slug
+		if !snippetNameRegex.MatchString(req.Name) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "name must be a valid slug (lowercase letters, digits, hyphens)"})
+			return
+		}
+		// Check duplicate
+		if _, err := repo.GetSnippetByName(req.Name); err == nil {
+			c.JSON(http.StatusConflict, gin.H{"error": "snippet name already exists"})
+			return
+		}
+		snippet := internal.Snippet{
+			Name:        req.Name,
+			Title:       req.Title,
+			Content:     req.Content,
+			Description: req.Description,
+		}
+		if err := repo.CreateSnippet(snippet); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true, "name": req.Name})
+	})
+
+	r.GET("/api/snippets/:name", func(c *gin.Context) {
+		name := c.Param("name")
+		snippet, err := repo.GetSnippetByName(name)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "snippet not found"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"snippet": snippet})
+	})
+
+	r.PATCH("/api/snippets/:name", func(c *gin.Context) {
+		name := c.Param("name")
+		if _, err := repo.GetSnippetByName(name); err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "snippet not found"})
+			return
+		}
+		var req map[string]interface{}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		updates := make(map[string]interface{})
+		if v, ok := req["title"]; ok {
+			if s, isStr := v.(string); isStr && s != "" {
+				updates["title"] = s
+			}
+		}
+		if v, ok := req["content"]; ok {
+			if s, isStr := v.(string); isStr && s != "" {
+				updates["content"] = s
+			}
+		}
+		if v, ok := req["description"]; ok {
+			updates["description"] = v
+		}
+		if len(updates) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "no fields to update"})
+			return
+		}
+		if err := repo.UpdateSnippet(name, updates); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	r.DELETE("/api/snippets/:name", func(c *gin.Context) {
+		name := c.Param("name")
+		if _, err := repo.GetSnippetByName(name); err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "snippet not found"})
+			return
+		}
+		if err := repo.DeleteSnippet(name); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	// Raw snippet endpoint for curl | bash / source <(curl)
+	r.GET("/s/:name", func(c *gin.Context) {
+		name := c.Param("name")
+		snippet, err := repo.GetSnippetByName(name)
+		if err != nil {
+			c.String(http.StatusNotFound, "snippet not found")
+			return
+		}
+		// Prepend query parameters as shell variable assignments (sorted for determinism)
+		query := c.Request.URL.Query()
+		keys := make([]string, 0, len(query))
+		for k := range query {
+			if safeParamKey.MatchString(k) {
+				keys = append(keys, k)
+			}
+		}
+		sort.Strings(keys)
+		var lines []string
+		for _, key := range keys {
+			values := query[key]
+			if len(values) > 0 {
+				escaped := strings.ReplaceAll(values[0], `"`, `\"`)
+				lines = append(lines, fmt.Sprintf(`%s="%s";`, key, escaped))
+			}
+		}
+		if len(lines) > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, snippet.Content)
+		c.String(http.StatusOK, strings.Join(lines, "\n"))
+	})
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", config.Port),
