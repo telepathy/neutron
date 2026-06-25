@@ -177,14 +177,16 @@ func (r *Repository) GetJobStatus(jobName string) (JobStatus, error) {
 
 func (r *Repository) ListProjectJobs(projectId string, days int) ([]PipelineJob, error) {
 	var jobs []PipelineJob
-	err := r.db.Where("project_id = ? AND name >= ?", projectId, time.Now().AddDate(0, 0, -days).Format("20060102")).
+	cutoff := time.Now().AddDate(0, 0, -days).Format("20060102") + "-000000"
+	err := r.db.Where("project_id = ? AND RIGHT(name, 15) >= ?", projectId, cutoff).
 		Order("id DESC").Preload("Pods").Find(&jobs).Error
 	return jobs, err
 }
 
 func (r *Repository) ListAllRecentJobs(days int) ([]PipelineJob, error) {
 	var jobs []PipelineJob
-	err := r.db.Where("name >= ?", time.Now().AddDate(0, 0, -days).Format("20060102")).
+	cutoff := time.Now().AddDate(0, 0, -days).Format("20060102") + "-000000"
+	err := r.db.Where("RIGHT(name, 15) >= ?", cutoff).
 		Order("id DESC").Preload("Pods").Find(&jobs).Error
 	return jobs, err
 }
