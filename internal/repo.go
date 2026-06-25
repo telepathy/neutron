@@ -67,7 +67,6 @@ type Snippet struct {
 	Title       string     `gorm:"column:title;type:varchar(255)" json:"title"`
 	Content     string     `gorm:"column:content;type:text" json:"content"`
 	Description string     `gorm:"column:description;type:text" json:"description"`
-	ProjectId   *int64     `gorm:"column:project_id" json:"project_id"`
 	CreatedAt   *time.Time `gorm:"column:created_at" json:"created_at"`
 	UpdatedAt   *time.Time `gorm:"column:updated_at" json:"updated_at"`
 }
@@ -243,13 +242,9 @@ func (r *Repository) GetJobReportUrl(jobName string) (string, error) {
 
 // --- Snippet CRUD ---
 
-func (r *Repository) ListSnippets(projectId *int64) ([]Snippet, error) {
+func (r *Repository) ListSnippets() ([]Snippet, error) {
 	var snippets []Snippet
-	query := r.db.Order("name")
-	if projectId != nil {
-		query = query.Where("project_id = ?", *projectId)
-	}
-	err := query.Find(&snippets).Error
+	err := r.db.Order("name").Find(&snippets).Error
 	return snippets, err
 }
 

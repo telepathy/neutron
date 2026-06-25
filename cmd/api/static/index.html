@@ -893,17 +893,14 @@
             return;
         }
 
-        var html = '<table><thead><tr><th>Name</th><th>Title</th><th>Description</th><th>Scope</th><th>Usage</th><th></th></tr></thead><tbody>';
+        var html = '<table><thead><tr><th>Name</th><th>Title</th><th>Description</th><th>Usage</th><th></th></tr></thead><tbody>';
         for (var i = 0; i < snippets.length; i++) {
             var s = snippets[i];
-            var scopeLabel = s.project_id ? 'Project #' + s.project_id : 'Global';
-            var scopeStyle = s.project_id ? 'color:#6d28d9' : 'color:#059669';
             var curlCmd = 'curl -s "' + location.protocol + '//' + location.host + '/s/' + escAttr(s.name) + '" | bash';
             html += '<tr>' +
                 '<td><b>' + escHtml(s.name) + '</b></td>' +
                 '<td>' + escHtml(s.title) + '</td>' +
                 '<td style="font-size:1.3rem;color:#999">' + escHtml(s.description || '-') + '</td>' +
-                '<td style="font-size:1.2rem"><span style="' + scopeStyle + ';font-weight:600">' + scopeLabel + '</span></td>' +
                 '<td style="font-size:1.2rem"><code style="background:#f8f9fa;padding:2px 6px;border-radius:3px;word-break:break-all">' + escHtml(curlCmd) + '</code>' +
                     ' <a href="javascript:void(0)" style="font-size:1.1rem;white-space:nowrap" onclick="copySnippetCmd(\'' + escAttr(s.name) + '\')">📋</a></td>' +
                 '<td>' +
@@ -947,9 +944,7 @@
             '<input type="text" id="snippetDesc">' +
             '<label for="snippetContent">Content <span style="color:#999;font-weight:400">(shell script)</span></label>' +
             '<textarea id="snippetContent" style="width:100%;min-height:200px;font-family:\'SF Mono\',\'Fira Code\',Menlo,monospace;font-size:1.3rem;padding:12px;border:1px solid #d1d5db;border-radius:4px;resize:vertical" placeholder="#!/bin/sh\necho Hello"></textarea>' +
-            '<label for="snippetProjectId">Project ID <span style="color:#999;font-weight:400">(empty = global)</span></label>' +
-            '<input type="text" id="snippetProjectId" placeholder="Leave empty for global" style="margin-bottom:16px">' +
-            '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+            '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">' +
                 '<button class="btn btn-outline" style="margin-top:0" onclick="document.getElementById(\'snippetModal\').remove()">Cancel</button>' +
                 '<button class="btn btn-primary" style="margin-top:0" id="snippetSaveBtn">' + (isEdit ? 'Update' : 'Create') + '</button>' +
             '</div>';
@@ -967,7 +962,6 @@
                 document.getElementById('snippetTitle').value = s.title || '';
                 document.getElementById('snippetDesc').value = s.description || '';
                 document.getElementById('snippetContent').value = s.content || '';
-                document.getElementById('snippetProjectId').value = s.project_id || '';
             }
         }
 
@@ -977,14 +971,8 @@
                 name: document.getElementById('snippetName').value.trim(),
                 title: document.getElementById('snippetTitle').value.trim(),
                 description: document.getElementById('snippetDesc').value.trim(),
-                content: document.getElementById('snippetContent').value,
-                project_id: null
+                content: document.getElementById('snippetContent').value
             };
-            var pidStr = document.getElementById('snippetProjectId').value.trim();
-            if (pidStr) {
-                var pid = parseInt(pidStr, 10);
-                if (!isNaN(pid)) data.project_id = pid;
-            }
 
             if (!data.name || !data.title || !data.content) {
                 var errEl = document.getElementById('snippetModalError');
@@ -993,7 +981,7 @@
                 return;
             }
 
-            var method = isEdit ? 'PUT' : 'POST';
+            var method = isEdit ? 'PATCH' : 'POST';
             var url = '/api/snippets' + (isEdit ? '/' + encodeURIComponent(name) : '');
 
             fetch(url, {

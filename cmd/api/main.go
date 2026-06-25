@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
+	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -24,6 +27,11 @@ import (
 
 //go:embed static/*
 var staticFs embed.FS
+
+var (
+	snippetNameRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+	safeParamKey     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+)
 
 func main() {
 	config, err := loadConfig()
@@ -78,13 +86,7 @@ func main() {
 	// --- Snippet management ---
 
 	r.GET("/api/snippets", func(c *gin.Context) {
-		var projectId *int64
-		if pidStr := c.Query("project_id"); pidStr != "" {
-			if pid, err := strconv.ParseInt(pidStr, 10, 64); err == nil {
-				projectId = &pid
-			}
-		}
-		snippets, err := repo.ListSnippets(projectId)
+		snippets, err := repo.ListSnippets()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -98,7 +100,6 @@ func main() {
 			Title       string `json:"title"`
 			Content     string `json:"content"`
 			Description string `json:"description"`
-			ProjectId   *int64 `json:"project_id"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -106,6 +107,11 @@ func main() {
 		}
 		if req.Name == "" || req.Title == "" || req.Content == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "name, title, and content are required"})
+			return
+		}
+		// Validate name format: must be a safe URL slug
+		if !snippetNameRegex.MatchString(req.Name) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "name must be a valid slug (lowercase letters, digits, hyphens)"})
 			return
 		}
 		// Check duplicate
@@ -118,7 +124,6 @@ func main() {
 			Title:       req.Title,
 			Content:     req.Content,
 			Description: req.Description,
-			ProjectId:   req.ProjectId,
 		}
 		if err := repo.CreateSnippet(snippet); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -137,7 +142,7 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"snippet": snippet})
 	})
 
-	r.PUT("/api/snippets/:name", func(c *gin.Context) {
+	r.PATCH("/api/snippets/:name", func(c *gin.Context) {
 		name := c.Param("name")
 		if _, err := repo.GetSnippetByName(name); err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "snippet not found"})
@@ -161,9 +166,6 @@ func main() {
 		}
 		if v, ok := req["description"]; ok {
 			updates["description"] = v
-		}
-		if v, ok := req["project_id"]; ok {
-			updates["project_id"] = v
 		}
 		if len(updates) == 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "no fields to update"})
@@ -197,9 +199,18 @@ func main() {
 			c.String(http.StatusNotFound, "snippet not found")
 			return
 		}
-		// Prepend query parameters as shell variable assignments
+		// Prepend query parameters as shell variable assignments (sorted for determinism)
+		query := c.Request.URL.Query()
+		keys := make([]string, 0, len(query))
+		for k := range query {
+			if safeParamKey.MatchString(k) {
+				keys = append(keys, k)
+			}
+		}
+		sort.Strings(keys)
 		var lines []string
-		for key, values := range c.Request.URL.Query() {
+		for _, key := range keys {
+			values := query[key]
 			if len(values) > 0 {
 				escaped := strings.ReplaceAll(values[0], `"`, `\"`)
 				lines = append(lines, fmt.Sprintf(`%s="%s";`, key, escaped))
