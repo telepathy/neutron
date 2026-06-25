@@ -67,6 +67,7 @@ type Snippet struct {
 	Title       string     `gorm:"column:title;type:varchar(255)" json:"title"`
 	Content     string     `gorm:"column:content;type:text" json:"content"`
 	Description string     `gorm:"column:description;type:text" json:"description"`
+	Params      string     `gorm:"column:params;type:text" json:"params"`
 	CreatedAt   *time.Time `gorm:"column:created_at" json:"created_at"`
 	UpdatedAt   *time.Time `gorm:"column:updated_at" json:"updated_at"`
 }

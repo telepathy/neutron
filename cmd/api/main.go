@@ -100,6 +100,7 @@ func main() {
 			Title       string `json:"title"`
 			Content     string `json:"content"`
 			Description string `json:"description"`
+			Params      string `json:"params"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -124,6 +125,7 @@ func main() {
 			Title:       req.Title,
 			Content:     req.Content,
 			Description: req.Description,
+			Params:      req.Params,
 		}
 		if err := repo.CreateSnippet(snippet); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -166,6 +168,9 @@ func main() {
 		}
 		if v, ok := req["description"]; ok {
 			updates["description"] = v
+		}
+		if v, ok := req["params"]; ok {
+			updates["params"] = v
 		}
 		if len(updates) == 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "no fields to update"})

@@ -882,6 +882,19 @@
             });
     }
 
+    function parseParamList(paramsStr) {
+        if (!paramsStr) return [];
+        return paramsStr.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s !== ''; });
+    }
+
+    function buildUsageUrl(name, params) {
+        var base = location.protocol + '//' + location.host + '/s/' + encodeURIComponent(name);
+        if (params.length === 0) return { url: base, cmd: 'curl -s "' + base + '" | bash' };
+        var qs = params.map(function(p) { return p + '=<VALUE>'; }).join('&');
+        var url = base + '?' + qs;
+        return { url: url, cmd: 'curl -s "' + url + '" | bash' };
+    }
+
     function renderSnippetsList(snippets) {
         var el = document.getElementById('snippetsList');
         if (!snippets || snippets.length === 0) {
@@ -889,35 +902,71 @@
             return;
         }
 
-        var html = '<table><thead><tr><th>Name</th><th>Title</th><th>Description</th><th>Usage</th><th></th></tr></thead><tbody>';
+        var html = '<table><thead><tr><th>Name</th><th>Title</th><th>Description</th><th></th></tr></thead><tbody>';
         for (var i = 0; i < snippets.length; i++) {
             var s = snippets[i];
-            var curlCmd = 'curl -s "' + location.protocol + '//' + location.host + '/s/' + escAttr(s.name) + '" | bash';
             html += '<tr>' +
                 '<td><b>' + escHtml(s.name) + '</b></td>' +
                 '<td>' + escHtml(s.title) + '</td>' +
                 '<td style="font-size:1.3rem;color:#999">' + escHtml(s.description || '-') + '</td>' +
-                '<td style="font-size:1.2rem"><code style="background:#f8f9fa;padding:2px 6px;border-radius:3px;word-break:break-all">' + escHtml(curlCmd) + '</code>' +
-                    ' <a href="javascript:void(0)" style="font-size:1.1rem;white-space:nowrap" onclick="copySnippetCmd(\'' + escAttr(s.name) + '\')">📋</a></td>' +
-                '<td>' +
-                    '<a href="javascript:void(0)" style="font-weight:600;font-size:1.3rem" onclick="openSnippetModal(\'' + escAttr(s.name) + '\')">Edit</a>' +
-                    ' <a href="javascript:void(0)" style="color:#dc2626;font-weight:600;font-size:1.3rem;margin-left:8px" onclick="deleteSnippet(\'' + escAttr(s.name) + '\')">Del</a>' +
-                '</td>' +
+                '<td><a href="javascript:void(0)" class="btn btn-outline" style="padding:4px 12px;font-size:1.2rem" onclick="viewSnippet(\'' + escAttr(s.name) + '\')">View</a></td>' +
                 '</tr>';
         }
         html += '</tbody></table>';
         el.innerHTML = html;
     }
 
-    function copySnippetCmd(name) {
-        var cmd = 'curl -s "' + location.protocol + '//' + location.host + '/s/' + encodeURIComponent(name) + '" | bash';
-        navigator.clipboard.writeText(cmd).then(function() {
-            alert('Copied: ' + cmd);
-        }).catch(function() {
-            prompt('Copy this command:', cmd);
-        });
+    function viewSnippet(name) {
+        var s = null;
+        for (var i = 0; i < _snippets.length; i++) {
+            if (_snippets[i].name === name) { s = _snippets[i]; break; }
+        }
+        if (!s) return;
+
+        var params = parseParamList(s.params);
+        var usage = buildUsageUrl(name, params);
+
+        var overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.id = 'snippetViewModal';
+        overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+        var paramsHtml = '';
+        if (params.length > 0) {
+            paramsHtml = '<div style="margin-top:16px"><span style="font-size:1.2rem;font-weight:600;color:#999;text-transform:uppercase;letter-spacing:.5px">Parameters</span>' +
+                '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">';
+            for (var i = 0; i < params.length; i++) {
+                paramsHtml += '<code style="background:#f5f3ff;color:#6d28d9;padding:2px 8px;border-radius:4px;font-size:1.2rem">' + escHtml(params[i]) + '</code>';
+            }
+            paramsHtml += '</div></div>';
+        }
+
+        var modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.maxWidth = '640px';
+        modal.innerHTML =
+            '<h4>' + escHtml(s.title) + '</h4>' +
+            '<div style="font-size:1.3rem;color:#606c76;margin-bottom:16px">' +
+                '<span style="font-weight:600;color:#999;text-transform:uppercase;letter-spacing:.5px;font-size:1.2rem">name</span> ' +
+                '<code style="font-size:1.4rem">' + escHtml(s.name) + '</code>' +
+            '</div>' +
+            (s.description ? '<p style="font-size:1.4rem;color:#606c76;margin-bottom:16px">' + escHtml(s.description) + '</p>' : '') +
+            '<label style="margin-top:0">Script</label>' +
+            '<pre style="background:#f8f9fa;padding:12px;border-radius:4px;overflow-x:auto;font-size:1.3rem;line-height:1.5;max-height:300px;overflow-y:auto">' + escHtml(s.content) + '</pre>' +
+            paramsHtml +
+            '<div style="margin-top:16px"><span style="font-size:1.2rem;font-weight:600;color:#999;text-transform:uppercase;letter-spacing:.5px">Usage</span>' +
+                '<div style="display:flex;align-items:center;gap:8px;margin-top:8px">' +
+                    '<code style="flex:1;background:#f8f9fa;padding:8px 12px;border-radius:4px;font-size:1.3rem;word-break:break-all">' + escHtml(usage.cmd) + '</code>' +
+                    '<button class="btn btn-outline" style="padding:4px 12px;font-size:1.2rem;margin-top:0;white-space:nowrap" onclick="copySnippetCmd(\'' + escAttr(name) + '\')">Copy</button>' +
+                '</div>' +
+            '</div>' +
+            '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">' +
+                '<button class="btn btn-outline" style="margin-top:0" onclick="document.getElementById(\'snippetViewModal\').remove()">Close</button>' +
+            '</div>';
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
     }
-    window.copySnippetCmd = copySnippetCmd;
+    window.viewSnippet = viewSnippet;
 
     function openSnippetModal(name) {
         var isEdit = !!name;
@@ -940,6 +989,8 @@
             '<input type="text" id="snippetDesc">' +
             '<label for="snippetContent">Content <span style="color:#999;font-weight:400">(shell script)</span></label>' +
             '<textarea id="snippetContent" style="width:100%;min-height:200px;font-family:\'SF Mono\',\'Fira Code\',Menlo,monospace;font-size:1.3rem;padding:12px;border:1px solid #d1d5db;border-radius:4px;resize:vertical" placeholder="#!/bin/sh\necho Hello"></textarea>' +
+            '<label for="snippetParams">Parameters <span style="color:#999;font-weight:400">(comma-separated, e.g. IMAGE_TAG, NAMESPACE)</span></label>' +
+            '<input type="text" id="snippetParams">' +
             '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">' +
                 '<button class="btn btn-outline" style="margin-top:0" onclick="document.getElementById(\'snippetModal\').remove()">Cancel</button>' +
                 '<button class="btn btn-primary" style="margin-top:0" id="snippetSaveBtn">' + (isEdit ? 'Update' : 'Create') + '</button>' +
@@ -947,7 +998,6 @@
         overlay.appendChild(modal);
         document.body.appendChild(overlay);
 
-        // If editing, populate fields
         if (isEdit) {
             var s = null;
             for (var i = 0; i < _snippets.length; i++) {
@@ -958,6 +1008,7 @@
                 document.getElementById('snippetTitle').value = s.title || '';
                 document.getElementById('snippetDesc').value = s.description || '';
                 document.getElementById('snippetContent').value = s.content || '';
+                document.getElementById('snippetParams').value = s.params || '';
             }
         }
 
@@ -967,7 +1018,8 @@
                 name: document.getElementById('snippetName').value.trim(),
                 title: document.getElementById('snippetTitle').value.trim(),
                 description: document.getElementById('snippetDesc').value.trim(),
-                content: document.getElementById('snippetContent').value
+                content: document.getElementById('snippetContent').value,
+                params: document.getElementById('snippetParams').value.trim()
             };
 
             if (!data.name || !data.title || !data.content) {
@@ -1004,6 +1056,21 @@
         };
     }
     window.openSnippetModal = openSnippetModal;
+
+    function copySnippetCmd(name) {
+        var s = null;
+        for (var i = 0; i < _snippets.length; i++) {
+            if (_snippets[i].name === name) { s = _snippets[i]; break; }
+        }
+        var params = s ? parseParamList(s.params) : [];
+        var usage = buildUsageUrl(name, params);
+        navigator.clipboard.writeText(usage.cmd).then(function() {
+            alert('Copied: ' + usage.cmd);
+        }).catch(function() {
+            prompt('Copy this command:', usage.cmd);
+        });
+    }
+    window.copySnippetCmd = copySnippetCmd;
 
     function deleteSnippet(name) {
         if (!confirm('Delete snippet "' + name + '"?')) return;
