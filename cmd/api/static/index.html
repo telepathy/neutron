@@ -1018,6 +1018,7 @@
             '</div>' +
             '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">' +
                 '<button class="btn btn-outline" style="margin-top:0" onclick="document.getElementById(\'snippetViewModal\').remove()">Close</button>' +
+                '<button class="btn btn-primary" style="margin-top:0" onclick="document.getElementById(\'snippetViewModal\').remove();openSnippetModal(\'' + escAttr(name) + '\')">Edit</button>' +
             '</div>';
         overlay.appendChild(modal);
         document.body.appendChild(overlay);
@@ -1082,6 +1083,10 @@
                 var errEl = document.getElementById('snippetModalError');
                 errEl.textContent = 'Name, title, and content are required.';
                 errEl.style.display = 'block';
+                return;
+            }
+
+            if (isEdit && !confirm('Changes will impact all pipelines using this snippet. Continue?')) {
                 return;
             }
 

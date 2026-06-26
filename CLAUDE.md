@@ -142,6 +142,32 @@ Content-Type: application/json
 
 Works for both GitLab and Codeup platforms. The repo URL is converted to a platform-specific API path to fetch `neutron.yaml` at the given ref.
 
+### Shell Snippets
+
+Snippets are reusable shell scripts stored in MySQL and exposed as `curl | bash` endpoints. Pipelines can reference a snippet by URL instead of duplicating shell code — the raw endpoint (`/s/:name`) returns the script with query parameters prepended as shell variable assignments.
+
+**Database table** `neutron_snippet` (GORM auto-migrated):
+- `id` (auto-increment PK), `name` (unique URL slug, `^[a-z0-9][a-z0-9-]*$`), `title` (display name), `content` (shell script body), `description` (free-text), `params` (comma-separated parameter names), `created_at`, `updated_at`
+
+**API endpoints** (registered in `cmd/api/main.go`):
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/snippets` | List all snippets (ordered by name) |
+| `POST` | `/api/snippets` | Create a snippet |
+| `GET` | `/api/snippets/:name` | Get a single snippet |
+| `PATCH` | `/api/snippets/:name` | Update snippet fields (title, content, description, params; name is immutable) |
+| `DELETE` | `/api/snippets/:name` | Delete a snippet |
+| `GET` | `/s/:name` | Raw endpoint — returns the script content with query params prepended as shell variables. Intended for `curl -s "URL?PARAM=val" \| bash` |
+
+**SPA frontend** (hash route `#/snippets`):
+- List page with search/filter, name/title/description table, "View" button per snippet
+- "New Snippet" modal — all fields editable, uses `POST /api/snippets`
+- View modal — read-only display of snippet metadata, content, parameters, and `curl | bash` usage with copy button. Has an "Edit" button that opens the edit modal.
+- Edit modal — pre-fills all fields except name (disabled). Uses `PATCH /api/snippets/:name`. On save, shows a confirmation alert: "Changes will impact all pipelines using this snippet. Continue?"
+- Delete with `confirm()` dialog
+
+**Repository methods** (`internal/repo.go` `Snippet` struct + CRUD): `ListSnippets`, `GetSnippetByName`, `CreateSnippet`, `UpdateSnippet` (partial map with `updated_at`), `DeleteSnippet`.
+
 ## Conventions
 
 - Go 1.23.0, Go modules (no vendor)
